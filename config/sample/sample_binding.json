@@ -1,0 +1,21 @@
+{
+  "endpoint_config": "endpoint_zenoh.json",
+  "bindings": [
+    {
+      "pdu_key": {
+        "robot_name": "Drone",
+        "pdu_name": "pos"
+      },
+      "direction": "pdu_to_ros",
+      "topic": "/hakoniwa/drone/pos"
+    },
+    {
+      "pdu_key": {
+        "robot_name": "Drone",
+        "pdu_name": "cmd"
+      },
+      "direction": "ros_to_pdu",
+      "topic": "/hakoniwa/drone/cmd"
+    }
+  ]
+}

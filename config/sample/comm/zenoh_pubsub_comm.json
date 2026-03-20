@@ -1,0 +1,27 @@
+{
+  "protocol": "zenoh",
+  "name": "zenoh_pubsub",
+  "direction": "inout",
+  "zenoh": {
+    "config_path": "zenoh/peer_listen.json5",
+    "key_prefix": "hakoniwa",
+    "io": {
+      "robots": [
+        {
+          "name": "Drone",
+          "pdu": [
+            { "name": "pos", "notify_on_recv": true },
+            { "name": "cmd", "notify_on_recv": false }
+          ]
+        },
+        {
+          "name": "Drone2",
+          "pdu": [
+            { "name": "pos", "notify_on_recv": true },
+            { "name": "cmd", "notify_on_recv": false }
+          ]
+        }
+      ]
+    }
+  }
+}

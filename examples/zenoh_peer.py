@@ -9,8 +9,7 @@ from hakoniwa_pdu_ros.type_mapper import pdu_bytes_to_ros_msg, ros_msg_to_pdu_by
 
 configure_import_paths()
 
-from hakoniwa_pdu_endpoint.c_endpoint import Endpoint, PduKey  # noqa: E402
-from hakoniwa_pdu_endpoint.c_endpoint_async import EndpointAsync, PduEvent  # noqa: E402
+from hakoniwa_pdu_endpoint.c_endpoint import Endpoint, PduEvent, PduKey  # noqa: E402
 from geometry_msgs.msg import Twist  # noqa: E402
 
 
@@ -19,11 +18,10 @@ def main() -> None:
     endpoint_config = repo_root / "config" / "sample" / "endpoint_zenoh_connect.json"
 
     endpoint = Endpoint("hakoniwa_pdu_ros_example_peer", "inout")
-    async_endpoint = EndpointAsync(endpoint)
-    async_endpoint.open(str(endpoint_config))
-    async_endpoint.start()
-    async_endpoint.post_start()
-    async_endpoint.start_dispatch()
+    endpoint.open(str(endpoint_config))
+    endpoint.start()
+    endpoint.post_start()
+    endpoint.start_dispatch()
 
     running = True
 
@@ -41,7 +39,7 @@ def main() -> None:
             f"angular=({msg.angular.x:.2f}, {msg.angular.y:.2f}, {msg.angular.z:.2f})"
         )
 
-    async_endpoint.on_recv_by_name(PduKey(robot="Drone", pdu="cmd"), _on_cmd)
+    endpoint.on_recv_by_name(PduKey(robot="Drone", pdu="cmd"), _on_cmd)
 
     try:
         seq = 0.0
@@ -51,7 +49,7 @@ def main() -> None:
             msg.linear.y = seq + 1.0
             msg.linear.z = seq + 2.0
             msg.angular.z = seq + 3.0
-            async_endpoint.send_by_name(
+            endpoint.send_by_name(
                 PduKey(robot="Drone", pdu="pos"),
                 ros_msg_to_pdu_bytes(msg, "geometry_msgs/Twist"),
             )
@@ -59,9 +57,9 @@ def main() -> None:
             seq += 1.0
             time.sleep(1.0)
     finally:
-        async_endpoint.stop_dispatch()
-        async_endpoint.stop()
-        async_endpoint.close()
+        endpoint.stop_dispatch()
+        endpoint.stop()
+        endpoint.close()
 
 
 if __name__ == "__main__":

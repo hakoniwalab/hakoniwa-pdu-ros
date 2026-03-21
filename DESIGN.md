@@ -78,7 +78,7 @@ converter が無い型は起動時に失敗させます。
 - `hakoniwa_pdu_ros/pdu_definition.py`
   `hakoniwa-pdu-python` の `PduChannelConfig` を優先利用し、API 差分も吸収する
 - `hakoniwa_pdu_ros/pdu_endpoint.py`
-  `Endpoint` / `EndpointAsync` を包む薄い wrapper
+  `Endpoint` を包む薄い wrapper
 - `hakoniwa_pdu_ros/type_mapper.py`
   generated converter と ROS message の間をつなぐ
 - `hakoniwa_pdu_ros/bridge_node.py`
@@ -90,7 +90,7 @@ converter が無い型は起動時に失敗させます。
 sequenceDiagram
     participant Sim as Hakoniwa
     participant EP as Endpoint
-    participant AQ as Async Dispatch
+    participant AQ as Endpoint Dispatch
     participant TM as Type Mapper
     participant Node as Bridge Node
     participant ROS as ROS 2 Topic
@@ -113,7 +113,7 @@ sequenceDiagram
 
 - ROS executor thread
   ROS callback を実行する
-- endpoint async dispatch thread
+- endpoint dispatch thread
   PDU receive callback を Python 側で配送する
 - transport thread
   raw I/O を処理する

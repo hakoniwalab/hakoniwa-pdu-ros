@@ -22,7 +22,6 @@ Example environment:
 ```bash
 export ROS_DISTRO=${ROS_DISTRO:-jazzy}
 source /opt/ros/${ROS_DISTRO}/setup.bash
-source ~/project/ros2_ws/install/setup.bash
 
 export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=~/project/hakoniwa-pdu-endpoint/build/python
 ```
@@ -34,6 +33,25 @@ installed `hakoniwa-pdu` package, also set:
 export HAKONIWA_PDU_PYTHON_PATH=/path/to/hakoniwa-pdu-python/src
 ```
 
+## Build and Source
+
+Build `hakoniwa_pdu_ros` with `colcon` so the example config files are copied
+under the installed package share directory.
+
+```bash
+mkdir -p ~/project/ros2_ws/src
+ln -s ~/project/hakoniwa-pdu-ros ~/project/ros2_ws/src/hakoniwa-pdu-ros
+
+cd ~/project/ros2_ws
+colcon build --packages-select hakoniwa_pdu_ros
+source install/setup.bash
+
+PKG_SHARE="$(ros2 pkg prefix hakoniwa_pdu_ros)/share/hakoniwa_pdu_ros"
+```
+
+After editing files under `examples/zenoh/config/`, run `colcon build` again
+and re-source `install/setup.bash` before using the installed config files.
+
 ## Run
 
 Use five terminals.
@@ -41,14 +59,14 @@ Use five terminals.
 Terminal 1: start the Zenoh router.
 
 ```bash
-zenohd -c examples/zenoh/config/comm/zenoh/router.json5
+zenohd -c "${PKG_SHARE}/examples/zenoh/config/comm/zenoh/router.json5"
 ```
 
 Terminal 2: start the ROS bridge.
 
 ```bash
 ros2 run hakoniwa_pdu_ros bridge \
-  --config examples/zenoh/config/zenoh_binding.json
+  --config "${PKG_SHARE}/examples/zenoh/config/zenoh_binding.json"
 ```
 
 During local development before install:
@@ -124,7 +142,7 @@ found.
 On the Mac PC:
 
 ```bash
-zenohd -c examples/zenoh/config/comm/zenoh/router.json5
+zenohd -c "${PKG_SHARE}/examples/zenoh/config/comm/zenoh/router.json5"
 ```
 
 The router config listens on all interfaces:
@@ -161,11 +179,20 @@ to:
 "tcp/192.168.0.10:7447"
 ```
 
+Rebuild the ROS workspace so the edited config is installed:
+
+```bash
+cd ~/project/ros2_ws
+colcon build --packages-select hakoniwa_pdu_ros
+source install/setup.bash
+PKG_SHARE="$(ros2 pkg prefix hakoniwa_pdu_ros)/share/hakoniwa_pdu_ros"
+```
+
 Then start the bridge on the ROS machine:
 
 ```bash
 ros2 run hakoniwa_pdu_ros bridge \
-  --config examples/zenoh/config/zenoh_binding.json
+  --config "${PKG_SHARE}/examples/zenoh/config/zenoh_binding.json"
 ```
 
 ### 4. Point the Raspberry Pi Demo to the Mac Router

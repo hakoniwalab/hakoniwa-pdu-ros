@@ -1,0 +1,21 @@
+{
+  "endpoint_config": "endpoint_ros_bridge.json",
+  "bindings": [
+    {
+      "pdu_key": {
+        "robot_name": "demo",
+        "pdu_name": "command"
+      },
+      "direction": "pdu_to_ros",
+      "topic": "/hakoniwa/demo/command"
+    },
+    {
+      "pdu_key": {
+        "robot_name": "demo",
+        "pdu_name": "debuginfo"
+      },
+      "direction": "pdu_to_ros",
+      "topic": "/hakoniwa/demo/debuginfo"
+    }
+  ]
+}

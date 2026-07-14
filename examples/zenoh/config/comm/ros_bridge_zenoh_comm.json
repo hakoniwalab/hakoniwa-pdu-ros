@@ -1,0 +1,20 @@
+{
+  "protocol": "zenoh",
+  "name": "hakoniwa_pdu_ros_zenoh_demo",
+  "direction": "inout",
+  "zenoh": {
+    "config_path": "zenoh/client.json5",
+    "key_prefix": "hakoniwa",
+    "io": {
+      "robots": [
+        {
+          "name": "demo",
+          "pdu": [
+            { "name": "command", "notify_on_recv": true },
+            { "name": "debuginfo", "notify_on_recv": true }
+          ]
+        }
+      ]
+    }
+  }
+}

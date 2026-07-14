@@ -151,11 +151,16 @@ endpoint 側の transport の詳細は upstream の
 前提:
 
 - Ubuntu 24.04
-- ROS 2 Kilted 導入済み
+- ROS 2 導入済み
 - `hakoniwa-pdu-endpoint` と `hakoniwa-pdu-ros` をローカルに checkout 済み
 - Hakoniwa の apt リポジトリから `hakoniwa-core-full` を導入済み
 
 この手順では、`hakoniwa-pdu-endpoint` だけをローカルでビルドする必要があります。
+使う ROS 2 distribution を `ROS_DISTRO` に設定してください。例:
+
+```bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+```
 
 ### 1. Hakoniwa runtime パッケージを導入
 
@@ -206,7 +211,8 @@ find build/python -name '_c_endpoint_ffi*'
 ### 3. Build `hakoniwa-pdu-ros`
 
 ```bash
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 source ~/project/hakoniwa-pdu-venv/bin/activate
 export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=~/project/hakoniwa-pdu-endpoint/build/python
 
@@ -231,7 +237,8 @@ export HAKONIWA_PDU_PYTHON_PATH=/path/to/hakoniwa-pdu-python/src
 ### 4. Start the Bridge
 
 ```bash
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 source ~/project/hakoniwa-pdu-venv/bin/activate
 source ~/project/ros2_ws/install/setup.bash
 
@@ -248,7 +255,8 @@ bridge は `peer_listen`、example 側は `peer_connect` です。
 ROS subscriber:
 
 ```bash
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 source ~/project/ros2_ws/install/setup.bash
 python3 ~/project/hakoniwa-pdu-ros/examples/ros_pos_subscriber.py
 ```
@@ -256,7 +264,8 @@ python3 ~/project/hakoniwa-pdu-ros/examples/ros_pos_subscriber.py
 Zenoh peer:
 
 ```bash
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 source ~/project/hakoniwa-pdu-venv/bin/activate
 export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=~/project/hakoniwa-pdu-endpoint/build/python
 python3 ~/project/hakoniwa-pdu-ros/examples/zenoh_peer.py
@@ -271,7 +280,8 @@ ros2 topic echo /hakoniwa/drone/pos
 ### 6. Check `ROS -> Zenoh`
 
 ```bash
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 source ~/project/hakoniwa-pdu-venv/bin/activate
 source ~/project/ros2_ws/install/setup.bash
 python3 ~/project/hakoniwa-pdu-ros/examples/ros_cmd_publisher.py

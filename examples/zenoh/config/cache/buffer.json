@@ -1,0 +1,7 @@
+{
+  "type": "buffer",
+  "name": "hakoniwa_pdu_ros_zenoh_demo_buffer",
+  "store": {
+    "mode": "latest"
+  }
+}

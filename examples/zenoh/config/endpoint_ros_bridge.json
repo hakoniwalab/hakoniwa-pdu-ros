@@ -1,0 +1,6 @@
+{
+  "name": "hakoniwa_pdu_ros_zenoh_demo_bridge",
+  "pdu_def_path": "pdudef.json",
+  "cache": "cache/buffer.json",
+  "comm": "comm/ros_bridge_zenoh_comm.json"
+}

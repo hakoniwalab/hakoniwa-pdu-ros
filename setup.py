@@ -47,6 +47,31 @@ setup(
                 "examples/ros_cmd_publisher.py",
             ],
         ),
+        (f"share/{package_name}/examples/zenoh", ["examples/zenoh/README.md"]),
+        (
+            f"share/{package_name}/examples/zenoh/config",
+            [
+                "examples/zenoh/config/zenoh_binding.json",
+                "examples/zenoh/config/endpoint_ros_bridge.json",
+                "examples/zenoh/config/pdudef.json",
+                "examples/zenoh/config/pdutypes.json",
+            ],
+        ),
+        (
+            f"share/{package_name}/examples/zenoh/config/cache",
+            ["examples/zenoh/config/cache/buffer.json"],
+        ),
+        (
+            f"share/{package_name}/examples/zenoh/config/comm",
+            ["examples/zenoh/config/comm/ros_bridge_zenoh_comm.json"],
+        ),
+        (
+            f"share/{package_name}/examples/zenoh/config/comm/zenoh",
+            [
+                "examples/zenoh/config/comm/zenoh/client.json5",
+                "examples/zenoh/config/comm/zenoh/router.json5",
+            ],
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

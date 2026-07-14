@@ -19,7 +19,8 @@ Environment example:
 ```bash
 export HAKONIWA_PDU_PYTHON_PATH=/path/to/hakoniwa-pdu-python/src
 export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=/path/to/hakoniwa-pdu-endpoint/build/python
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 ```
 
 If `HAKONIWA_PDU_ENDPOINT_PYTHON_PATH` points to `build/python`,

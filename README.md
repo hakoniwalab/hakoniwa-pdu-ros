@@ -155,11 +155,16 @@ For endpoint-side transport details, refer to the upstream repository:
 Assumptions:
 
 - Ubuntu 24.04
-- ROS 2 Kilted is already installed
+- ROS 2 is already installed
 - `hakoniwa-pdu-endpoint` and `hakoniwa-pdu-ros` are checked out locally
 - `hakoniwa-core-full` is installed from the Hakoniwa apt repository
 
 For this setup, only `hakoniwa-pdu-endpoint` needs to be built locally.
+Set `ROS_DISTRO` to the ROS 2 distribution you want to use, for example:
+
+```bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+```
 
 ### 1. Install Hakoniwa runtime packages
 
@@ -211,7 +216,8 @@ find build/python -name '_c_endpoint_ffi*'
 ### 3. Build `hakoniwa-pdu-ros`
 
 ```bash
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 source ~/project/hakoniwa-pdu-venv/bin/activate
 export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=~/project/hakoniwa-pdu-endpoint/build/python
 
@@ -236,7 +242,8 @@ export HAKONIWA_PDU_PYTHON_PATH=/path/to/hakoniwa-pdu-python/src
 ### 4. Start the Bridge
 
 ```bash
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 source ~/project/hakoniwa-pdu-venv/bin/activate
 source ~/project/ros2_ws/install/setup.bash
 
@@ -253,7 +260,8 @@ The bridge side uses `peer_listen`. The example side uses `peer_connect`.
 ROS subscriber:
 
 ```bash
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 source ~/project/ros2_ws/install/setup.bash
 python3 ~/project/hakoniwa-pdu-ros/examples/ros_pos_subscriber.py
 ```
@@ -261,7 +269,8 @@ python3 ~/project/hakoniwa-pdu-ros/examples/ros_pos_subscriber.py
 Zenoh peer:
 
 ```bash
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 source ~/project/hakoniwa-pdu-venv/bin/activate
 export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=~/project/hakoniwa-pdu-endpoint/build/python
 python3 ~/project/hakoniwa-pdu-ros/examples/zenoh_peer.py
@@ -276,7 +285,8 @@ ros2 topic echo /hakoniwa/drone/pos
 ### 6. Check `ROS -> Zenoh`
 
 ```bash
-source /opt/ros/kilted/setup.bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
 source ~/project/hakoniwa-pdu-venv/bin/activate
 source ~/project/ros2_ws/install/setup.bash
 python3 ~/project/hakoniwa-pdu-ros/examples/ros_cmd_publisher.py

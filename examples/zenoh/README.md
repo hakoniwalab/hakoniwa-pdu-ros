@@ -7,19 +7,21 @@ The bidirectional demo uses these Zenoh keys and ROS topics:
 
 | Zenoh key | PDU | ROS type | ROS topic |
 | --- | --- | --- | --- |
-| `hakoniwa/demo/0` | `demo/command` | `std_msgs/msg/UInt16` | `/hakoniwa/demo/command` |
-| `hakoniwa/demo/1` | `demo/debuginfo` | `std_msgs/msg/UInt16` | `/hakoniwa/demo/debuginfo` |
+| `hakoniwa/demo/0` | `demo/command` | `std_msgs/msg/UInt16` | `/from_pdu/demo/command`, `/to_pdu/demo/command` |
+| `hakoniwa/demo/1` | `demo/debuginfo` | `std_msgs/msg/UInt16` | `/from_pdu/demo/debuginfo`, `/to_pdu/demo/debuginfo` |
 
-When `direction` is omitted in the binding config, the bridge creates both
-directions for that PDU: Zenoh -> ROS and ROS -> Zenoh.
+When `direction` and `topic` are omitted in the binding config, the bridge
+creates both directions with safe default topic names:
+
+- `pdu_to_ros`: `/from_pdu/<robot>/<pdu>`
+- `ros_to_pdu`: `/to_pdu/<robot>/<pdu>`
 
 ```json
 {
   "pdu_key": {
     "robot_name": "demo",
     "pdu_name": "command"
-  },
-  "topic": "/hakoniwa/demo/command"
+  }
 }
 ```
 
@@ -118,20 +120,22 @@ You should see:
 
 ```text
 /hakoniwa_pdu_ros_bridge
-/hakoniwa/demo/command [std_msgs/msg/UInt16]
-/hakoniwa/demo/debuginfo [std_msgs/msg/UInt16]
+/from_pdu/demo/command [std_msgs/msg/UInt16]
+/to_pdu/demo/command [std_msgs/msg/UInt16]
+/from_pdu/demo/debuginfo [std_msgs/msg/UInt16]
+/to_pdu/demo/debuginfo [std_msgs/msg/UInt16]
 ```
 
 Then echo the response topic:
 
 ```bash
-ros2 topic echo /hakoniwa/demo/debuginfo
+ros2 topic echo /from_pdu/demo/debuginfo
 ```
 
 In another shell, check that the command topic exists:
 
 ```bash
-ros2 topic info /hakoniwa/demo/command
+ros2 topic info /to_pdu/demo/command
 ```
 
 Terminal 4: run the endpoint demo responder.
@@ -144,20 +148,19 @@ python3 python/examples/zenoh/command_sub.py
 Terminal 5: publish a command from ROS.
 
 ```bash
-ros2 topic pub --once /hakoniwa/demo/command std_msgs/msg/UInt16 "{data: 123}"
+ros2 topic pub --once /to_pdu/demo/command std_msgs/msg/UInt16 "{data: 123}"
 ```
 
 `command_sub.py` receives the command over Zenoh and sends
 `debuginfo=command+1000`. The bridge publishes the response to
-`/hakoniwa/demo/debuginfo`, so the expected ROS output is:
+`/from_pdu/demo/debuginfo`, so the expected ROS output is:
 
 ```text
 data: 1123
 ```
 
-Do not manually publish to `/hakoniwa/demo/debuginfo` during this demo. Because
-the binding is bidirectional, publishing to that topic also sends
-`demo/debuginfo` back to Zenoh.
+You can also send `demo/debuginfo` to Zenoh through `/to_pdu/demo/debuginfo`,
+but it is not needed for this command/response demo.
 
 ## Receive-Only Variant
 
@@ -298,7 +301,7 @@ python3 python/examples/zenoh/command_sub.py
 On the ROS machine:
 
 ```bash
-ros2 topic pub --once /hakoniwa/demo/command std_msgs/msg/UInt16 "{data: 123}"
+ros2 topic pub --once /to_pdu/demo/command std_msgs/msg/UInt16 "{data: 123}"
 ```
 
 The Raspberry Pi responder should receive `command=123` and send
@@ -309,14 +312,14 @@ The Raspberry Pi responder should receive `command=123` and send
 On the ROS machine:
 
 ```bash
-ros2 topic echo /hakoniwa/demo/debuginfo
+ros2 topic echo /from_pdu/demo/debuginfo
 ```
 
 Expected flow:
 
 ```text
-ROS /hakoniwa/demo/command -> hakoniwa/demo/0 -> Raspberry Pi command_sub.py
-Raspberry Pi command_sub.py -> hakoniwa/demo/1 -> ROS /hakoniwa/demo/debuginfo
+ROS /to_pdu/demo/command -> hakoniwa/demo/0 -> Raspberry Pi command_sub.py
+Raspberry Pi command_sub.py -> hakoniwa/demo/1 -> ROS /from_pdu/demo/debuginfo
 ```
 
 ### 7. Optional: Run the Mac Publisher
@@ -391,4 +394,34 @@ cd ~/project/ros2_ws
 colcon build --packages-select hakoniwa_pdu_ros
 source install/setup.bash
 PKG_SHARE="$(ros2 pkg prefix hakoniwa_pdu_ros)/share/hakoniwa_pdu_ros"
+```
+
+### Same Topic for Both Directions Is Rejected
+
+The bridge rejects configs that map `pdu_to_ros` and `ros_to_pdu` to the same
+ROS topic, because that can create a feedback loop.
+
+This is invalid:
+
+```json
+[
+  {
+    "pdu_key": {"robot_name": "demo", "pdu_name": "command"},
+    "direction": "pdu_to_ros",
+    "topic": "/demo/command"
+  },
+  {
+    "pdu_key": {"robot_name": "demo", "pdu_name": "command"},
+    "direction": "ros_to_pdu",
+    "topic": "/demo/command"
+  }
+]
+```
+
+Use separate topics instead, or omit `topic` and let the bridge generate safe
+defaults:
+
+```text
+/from_pdu/demo/command
+/to_pdu/demo/command
 ```

@@ -42,7 +42,12 @@ def load_config(path: str | Path) -> BindingRootConfig:
     pdu_definition = PduDefinition()
     pdu_definition.load(pdu_def_path)
 
-    bindings = [_parse_binding(entry, pdu_definition) for entry in raw["bindings"]]
+    bindings = [
+        binding
+        for entry in raw["bindings"]
+        for binding in _parse_binding(entry, pdu_definition)
+    ]
+    _validate_no_bidirectional_topic_conflicts(bindings)
     return BindingRootConfig(
         endpoint_config=endpoint_config,
         pdu_def_path=pdu_def_path,
@@ -50,24 +55,58 @@ def load_config(path: str | Path) -> BindingRootConfig:
     )
 
 
-def _parse_binding(entry: dict, pdu_definition: PduDefinition) -> BindingConfig:
-    direction = entry.get("direction", "bidirectional")
-    if direction not in {"pdu_to_ros", "ros_to_pdu", "bidirectional"}:
-        raise ValueError(f"Unsupported binding direction: {direction}")
+def _parse_binding(entry: dict, pdu_definition: PduDefinition) -> list[BindingConfig]:
+    raw_direction = entry.get("direction")
+    if raw_direction is not None and raw_direction not in {"pdu_to_ros", "ros_to_pdu"}:
+        raise ValueError(f"Unsupported binding direction: {raw_direction}")
+
+    if raw_direction is None:
+        directions = ["pdu_to_ros", "ros_to_pdu"]
+    else:
+        directions = [raw_direction]
 
     pdu_key_entry = entry["pdu_key"]
     robot_name = pdu_key_entry["robot_name"]
     pdu_name = pdu_key_entry["pdu_name"]
     pdu = pdu_definition.get(robot_name, pdu_name)
 
-    return BindingConfig(
-        direction=direction,
-        pdu_key=PduKeyConfig(robot_name=robot_name, pdu_name=pdu_name),
-        topic=entry["topic"],
-        channel_id=pdu.channel_id,
-        pdu_size=pdu.pdu_size,
-        pdu_type=pdu.type,
-    )
+    return [
+        BindingConfig(
+            direction=direction,
+            pdu_key=PduKeyConfig(robot_name=robot_name, pdu_name=pdu_name),
+            topic=entry.get("topic", _default_topic(direction, robot_name, pdu_name)),
+            channel_id=pdu.channel_id,
+            pdu_size=pdu.pdu_size,
+            pdu_type=pdu.type,
+        )
+        for direction in directions
+    ]
+
+
+def _default_topic(direction: str, robot_name: str, pdu_name: str) -> str:
+    prefix = {
+        "pdu_to_ros": "from_pdu",
+        "ros_to_pdu": "to_pdu",
+    }[direction]
+    return f"/{prefix}/{robot_name}/{pdu_name}"
+
+
+def _validate_no_bidirectional_topic_conflicts(bindings: list[BindingConfig]) -> None:
+    directions_by_topic: dict[str, set[str]] = {}
+    for binding in bindings:
+        directions_by_topic.setdefault(binding.topic, set()).add(binding.direction)
+
+    conflicting_topics = [
+        topic
+        for topic, directions in directions_by_topic.items()
+        if {"pdu_to_ros", "ros_to_pdu"}.issubset(directions)
+    ]
+    if conflicting_topics:
+        topics = ", ".join(sorted(conflicting_topics))
+        raise ValueError(
+            "Refusing bidirectional bindings on the same ROS topic. "
+            f"Use separate topics or omit topic for safe defaults: {topics}"
+        )
 
 
 def _load_json(path: Path) -> dict:

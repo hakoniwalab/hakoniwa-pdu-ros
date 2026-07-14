@@ -5,15 +5,13 @@
       "pdu_key": {
         "robot_name": "demo",
         "pdu_name": "command"
-      },
-      "topic": "/hakoniwa/demo/command"
+      }
     },
     {
       "pdu_key": {
         "robot_name": "demo",
         "pdu_name": "debuginfo"
-      },
-      "topic": "/hakoniwa/demo/debuginfo"
+      }
     }
   ]
 }

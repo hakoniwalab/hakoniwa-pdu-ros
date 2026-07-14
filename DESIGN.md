@@ -22,16 +22,22 @@ binding 設定は最小限です。
       "pdu_key": {
         "robot_name": "Drone",
         "pdu_name": "pos"
-      },
-      "topic": "/hakoniwa/drone/pos"
+      }
     }
   ]
 }
 ```
 
 PDU 型、channel ID、payload size は `pdudef.json` から解決します。
-`direction` を省略した binding は双方向です。片方向に制限したい場合だけ
-`pdu_to_ros` または `ros_to_pdu` を明示します。
+`direction` と `topic` を省略した binding は、loader が次の2本の一方向 binding
+に展開します。
+
+- `pdu_to_ros`: `/from_pdu/<robot>/<pdu>`
+- `ros_to_pdu`: `/to_pdu/<robot>/<pdu>`
+
+片方向に制限したい場合だけ `pdu_to_ros` または `ros_to_pdu` を明示します。
+同じ ROS topic に `pdu_to_ros` と `ros_to_pdu` の両方を割り当てる config は、
+feedback loop を避けるため起動前に拒否します。
 
 ## Conversion Strategy
 
@@ -83,7 +89,7 @@ converter が無い型は起動時に失敗させます。
 - `hakoniwa_pdu_ros/type_mapper.py`
   generated converter と ROS message の間をつなぐ
 - `hakoniwa_pdu_ros/bridge_node.py`
-  双方向 binding、または明示された `pdu_to_ros` / `ros_to_pdu` を配線する ROS node
+  loader が展開した一方向 binding を ROS publisher/subscription に配線する ROS node
 
 ## Data Flow
 

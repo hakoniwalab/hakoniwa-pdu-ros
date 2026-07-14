@@ -10,10 +10,12 @@ def test_load_sample_bridge_config() -> None:
 
     assert config.endpoint_config.name == "endpoint_zenoh.json"
     assert config.pdu_def_path.name == "pdudef.json"
-    assert len(config.bindings) == 2
+    assert len(config.bindings) == 4
 
     pos_binding = config.bindings[0]
-    cmd_binding = config.bindings[1]
+    pos_send_binding = config.bindings[1]
+    cmd_binding = config.bindings[2]
+    cmd_send_binding = config.bindings[3]
 
     assert pos_binding.direction == "pdu_to_ros"
     assert pos_binding.pdu_key.robot_name == "Drone"
@@ -23,13 +25,29 @@ def test_load_sample_bridge_config() -> None:
     assert pos_binding.pdu_size == 72
     assert pos_binding.pdu_type == "geometry_msgs/Twist"
 
-    assert cmd_binding.direction == "ros_to_pdu"
+    assert pos_send_binding.direction == "ros_to_pdu"
+    assert pos_send_binding.pdu_key.robot_name == "Drone"
+    assert pos_send_binding.pdu_key.pdu_name == "pos"
+    assert pos_send_binding.topic == "/hakoniwa/drone/pos"
+    assert pos_send_binding.channel_id == 0
+    assert pos_send_binding.pdu_size == 72
+    assert pos_send_binding.pdu_type == "geometry_msgs/Twist"
+
+    assert cmd_binding.direction == "pdu_to_ros"
     assert cmd_binding.pdu_key.robot_name == "Drone"
     assert cmd_binding.pdu_key.pdu_name == "cmd"
-    assert cmd_binding.topic == "/hakoniwa/drone/cmd"
+    assert cmd_binding.topic == "/pdu/hakoniwa/drone/cmd"
     assert cmd_binding.channel_id == 1
     assert cmd_binding.pdu_size == 72
     assert cmd_binding.pdu_type == "geometry_msgs/Twist"
+
+    assert cmd_send_binding.direction == "ros_to_pdu"
+    assert cmd_send_binding.pdu_key.robot_name == "Drone"
+    assert cmd_send_binding.pdu_key.pdu_name == "cmd"
+    assert cmd_send_binding.topic == "/hakoniwa/drone/cmd"
+    assert cmd_send_binding.channel_id == 1
+    assert cmd_send_binding.pdu_size == 72
+    assert cmd_send_binding.pdu_type == "geometry_msgs/Twist"
 
 
 def test_load_bidirectional_binding_when_direction_is_omitted() -> None:

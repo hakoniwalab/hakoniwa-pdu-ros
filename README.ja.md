@@ -132,6 +132,15 @@ PDU 側には送信されません。
 }
 ```
 
+Zenoh comm config の `zenoh.io` は binding config から生成できます。
+endpoint 側の receive 設定と binding がズレないように、次のコマンドで更新してください。
+
+```bash
+python3 -m hakoniwa_pdu_ros.gen_zenoh_io binding.json --comm comm.json --write
+```
+
+bridge は起動時に `zenoh.io` を検証し、binding と一致しない場合はこの生成コマンドを表示します。
+
 ## Verified Coverage
 
 まずは標準 ROS message を常設テスト対象にしています。ここが通れば、
@@ -285,7 +294,7 @@ python3 ~/project/hakoniwa-pdu-ros/examples/zenoh_peer.py
 あるいは:
 
 ```bash
-ros2 topic echo /hakoniwa/drone/pos
+ros2 topic echo /pdu/hakoniwa/drone/pos
 ```
 
 ### 6. Check `ROS -> Zenoh`
@@ -311,7 +320,7 @@ python3 ~/project/hakoniwa-pdu-ros/examples/ros_cmd_publisher.py
 - `open failed: err=3`
   bridge と example の両方が `listen` になっています。bridge は `endpoint_zenoh.json`、example は `endpoint_zenoh_connect.json` を使います。
 - `WARNING: No subscribers found for Robot: ...`
-  その endpoint インスタンスに対応 callback がありません。sample config では `notify_on_recv` を direction に合わせて絞っています。
+  その endpoint インスタンスに対応 callback がありません。sample config では双方向 bridge で使う sample PDU の `notify_on_recv` を有効にしています。
 - `config/sample/` を変えたのに挙動が変わらない
   `ros2 run` は `install/.../share/...` の設定を使います。`colcon build` し直してください。
 

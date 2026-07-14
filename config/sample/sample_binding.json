@@ -6,7 +6,6 @@
         "robot_name": "Drone",
         "pdu_name": "pos"
       },
-      "direction": "pdu_to_ros",
       "topic": "/hakoniwa/drone/pos"
     },
     {
@@ -14,7 +13,6 @@
         "robot_name": "Drone",
         "pdu_name": "cmd"
       },
-      "direction": "ros_to_pdu",
       "topic": "/hakoniwa/drone/cmd"
     }
   ]

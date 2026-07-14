@@ -10,8 +10,14 @@
         {
           "name": "demo",
           "pdu": [
-            { "name": "command", "notify_on_recv": true },
-            { "name": "debuginfo", "notify_on_recv": true }
+            {
+              "name": "command",
+              "notify_on_recv": true
+            },
+            {
+              "name": "debuginfo",
+              "notify_on_recv": true
+            }
           ]
         }
       ]

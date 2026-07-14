@@ -138,6 +138,16 @@ ROS does not send data back to the PDU side.
 }
 ```
 
+For Zenoh comm configs, generate the `zenoh.io` section from the binding config
+so endpoint receive settings cannot drift:
+
+```bash
+python3 -m hakoniwa_pdu_ros.gen_zenoh_io binding.json --comm comm.json --write
+```
+
+The bridge validates `zenoh.io` at startup and prints this command if it does
+not match the bindings.
+
 ## Verified Coverage
 
 The permanent test target is standard ROS messages first. If these pass, the
@@ -292,7 +302,7 @@ python3 ~/project/hakoniwa-pdu-ros/examples/zenoh_peer.py
 Or:
 
 ```bash
-ros2 topic echo /hakoniwa/drone/pos
+ros2 topic echo /pdu/hakoniwa/drone/pos
 ```
 
 ### 6. Check `ROS -> Zenoh`
@@ -324,8 +334,8 @@ If `Drone/cmd` appears on the `zenoh_peer.py` side, the path is working.
   `endpoint_zenoh_connect.json`.
 - `WARNING: No subscribers found for Robot: ...`
   The endpoint instance received a PDU that has no local callback registered.
-  In the sample config, `notify_on_recv` is trimmed to match the actual
-  consumed direction.
+  In the sample config, `notify_on_recv` is enabled for the sample PDUs used by
+  the bidirectional bridge.
 - Behavior did not change after editing `config/sample/`
   `ros2 run` uses files under `install/.../share/...`. Re-run `colcon build`.
 

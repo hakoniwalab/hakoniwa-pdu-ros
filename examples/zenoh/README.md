@@ -97,6 +97,31 @@ PKG_SHARE="$(ros2 pkg prefix hakoniwa_pdu_ros)/share/hakoniwa_pdu_ros"
 After editing files under `examples/zenoh/config/`, run `colcon build` again
 and re-source `install/setup.bash` before using the installed config files.
 
+## Generate Zenoh IO
+
+The Zenoh comm file keeps transport settings such as `config_path` and
+`key_prefix`, but its `zenoh.io` section should match the bridge bindings.
+Generate that section from the binding config whenever bindings change.
+
+Print the expected `zenoh.io`:
+
+```bash
+python3 -m hakoniwa_pdu_ros.gen_zenoh_io \
+  examples/zenoh/config/zenoh_bidirectional_binding.json
+```
+
+Update only the `zenoh.io` section in the comm file:
+
+```bash
+python3 -m hakoniwa_pdu_ros.gen_zenoh_io \
+  examples/zenoh/config/zenoh_bidirectional_binding.json \
+  --comm examples/zenoh/config/comm/ros_bridge_zenoh_comm.json \
+  --write
+```
+
+The bridge validates `zenoh.io` at startup. If it does not match the bindings,
+startup stops and prints the regeneration command.
+
 ## Run
 
 Use five terminals.
@@ -189,8 +214,8 @@ ros2 run hakoniwa_pdu_ros bridge \
 That variant maps both `command` and `debuginfo` from Zenoh to ROS topics:
 
 ```text
-hakoniwa/demo/0 -> /pdu/hakoniwa/demo/command
-hakoniwa/demo/1 -> /pdu/hakoniwa/demo/debuginfo
+hakoniwa/demo/0 -> /pdu/demo/command
+hakoniwa/demo/1 -> /pdu/demo/debuginfo
 ```
 
 ## Production Setup

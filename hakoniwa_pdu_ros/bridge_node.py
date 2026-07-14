@@ -9,6 +9,7 @@ from hakoniwa_pdu_ros.type_mapper import (
     ros_msg_to_pdu_bytes,
     validate_pdu_converter,
 )
+from hakoniwa_pdu_ros.zenoh_io import validate_zenoh_io_for_config
 
 class HakoniwaRosBridgeNode(Node):
     """ROS 2 bridge node for Hakoniwa PDU bindings."""
@@ -72,6 +73,8 @@ class HakoniwaRosBridgeNode(Node):
 
 
 def run(config_path: str | None = None) -> None:
+    if config_path:
+        validate_zenoh_io_for_config(config_path)
     rclpy.init()
     config = load_config(config_path) if config_path else None
     node = HakoniwaRosBridgeNode(config)

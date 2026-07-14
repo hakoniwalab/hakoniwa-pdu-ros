@@ -3,7 +3,7 @@
 These examples demonstrate the intended minimal workflow:
 
 - Zenoh side sends `Drone/pos`
-- `hakoniwa-pdu-ros` bridge publishes `/hakoniwa/drone/pos`
+- `hakoniwa-pdu-ros` bridge publishes `/pdu/hakoniwa/drone/pos`
 - ROS side publishes `/hakoniwa/drone/cmd`
 - `hakoniwa-pdu-ros` bridge forwards it to Zenoh as `Drone/cmd`
 
@@ -62,7 +62,7 @@ warnings for `pos`.
 python3 examples/ros_pos_subscriber.py
 ```
 
-You should see `/hakoniwa/drone/pos` updates printed on the ROS side.
+You should see `/pdu/hakoniwa/drone/pos` updates printed on the ROS side.
 
 ## 4. Observe ROS -> Zenoh path
 

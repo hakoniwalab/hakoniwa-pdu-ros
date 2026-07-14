@@ -8,7 +8,7 @@ from rclpy.node import Node
 class PosSubscriber(Node):
     def __init__(self) -> None:
         super().__init__("hakoniwa_pos_subscriber")
-        self.create_subscription(Twist, "/hakoniwa/drone/pos", self._on_msg, 10)
+        self.create_subscription(Twist, "/pdu/hakoniwa/drone/pos", self._on_msg, 10)
 
     def _on_msg(self, msg: Twist) -> None:
         self.get_logger().info(

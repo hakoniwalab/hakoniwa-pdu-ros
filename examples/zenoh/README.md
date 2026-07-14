@@ -19,11 +19,27 @@ The endpoint demo publishes raw Hakoniwa PDU payloads on these Zenoh keys:
 
 Example environment:
 
+macOS:
+
 ```bash
 export ROS_DISTRO=${ROS_DISTRO:-jazzy}
 source /opt/ros/${ROS_DISTRO}/setup.bash
 
-export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=~/project/hakoniwa-pdu-endpoint/build/python
+export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=~/project/hakoniwa-pdu-endpoint/build-zenoh-shared/python
+export HAKO_PDU_ENDPOINT_LIB_DIR=~/project/hakoniwa-pdu-endpoint/build-zenoh-shared/src
+export HAKO_PDU_ENDPOINT_SHARED_LIB=~/project/hakoniwa-pdu-endpoint/build-zenoh-shared/src/libhakoniwa_pdu_endpoint.dylib
+```
+
+Linux / Raspberry Pi:
+
+```bash
+export ROS_DISTRO=${ROS_DISTRO:-jazzy}
+source /opt/ros/${ROS_DISTRO}/setup.bash
+
+export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=~/project/hakoniwa-pdu-endpoint/build-zenoh-shared/python
+export HAKO_PDU_ENDPOINT_LIB_DIR=~/project/hakoniwa-pdu-endpoint/build-zenoh-shared/src
+export HAKO_PDU_ENDPOINT_SHARED_LIB=~/project/hakoniwa-pdu-endpoint/build-zenoh-shared/src/libhakoniwa_pdu_endpoint.so
+export LD_LIBRARY_PATH=~/project/hakoniwa-pdu-endpoint/build-zenoh-shared/src:${LD_LIBRARY_PATH:-}
 ```
 
 If you are using a local `hakoniwa-pdu-python` checkout instead of the

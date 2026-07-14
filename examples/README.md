@@ -18,13 +18,14 @@ Environment example:
 
 ```bash
 export HAKONIWA_PDU_PYTHON_PATH=/path/to/hakoniwa-pdu-python/src
-export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=/path/to/hakoniwa-pdu-endpoint/build/python
+export HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=/path/to/hakoniwa-pdu-endpoint/build-zenoh-shared/python
 export ROS_DISTRO=${ROS_DISTRO:-jazzy}
 source /opt/ros/${ROS_DISTRO}/setup.bash
 ```
 
-If `HAKONIWA_PDU_ENDPOINT_PYTHON_PATH` points to `build/python`,
-`hakoniwa-pdu-ros` also adds the sibling `python/` directory automatically.
+If `HAKONIWA_PDU_ENDPOINT_PYTHON_PATH` points to a build output such as
+`build/python` or `build-zenoh-shared/python`, `hakoniwa-pdu-ros` also adds
+the endpoint source `python/` directory automatically.
 
 ## 1. Start the bridge
 

@@ -51,8 +51,8 @@ def load_config(path: str | Path) -> BindingRootConfig:
 
 
 def _parse_binding(entry: dict, pdu_definition: PduDefinition) -> BindingConfig:
-    direction = entry["direction"]
-    if direction not in {"pdu_to_ros", "ros_to_pdu"}:
+    direction = entry.get("direction", "bidirectional")
+    if direction not in {"pdu_to_ros", "ros_to_pdu", "bidirectional"}:
         raise ValueError(f"Unsupported binding direction: {direction}")
 
     pdu_key_entry = entry["pdu_key"]

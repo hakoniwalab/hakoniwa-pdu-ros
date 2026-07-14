@@ -28,9 +28,9 @@ class HakoniwaRosBridgeNode(Node):
             )
             for binding in self._config.bindings:
                 validate_pdu_converter(binding.pdu_type)
-                if binding.direction == "pdu_to_ros":
+                if binding.direction in {"pdu_to_ros", "bidirectional"}:
                     self._setup_in_binding(binding)
-                else:
+                if binding.direction in {"ros_to_pdu", "bidirectional"}:
                     self._setup_out_binding(binding)
 
     def destroy_node(self) -> bool:

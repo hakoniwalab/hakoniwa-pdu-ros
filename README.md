@@ -99,7 +99,9 @@ Important runtime details:
 ## Minimal Config
 
 The binding stays intentionally small. Type, channel ID, and payload size are
-resolved from `pdudef.json`.
+resolved from `pdudef.json`. If `direction` is omitted, the binding is
+bidirectional. Use `pdu_to_ros` or `ros_to_pdu` only when you want a one-way
+binding.
 
 ```json
 {
@@ -110,7 +112,6 @@ resolved from `pdudef.json`.
         "robot_name": "Drone",
         "pdu_name": "pos"
       },
-      "direction": "pdu_to_ros",
       "topic": "/hakoniwa/drone/pos"
     },
     {
@@ -118,7 +119,6 @@ resolved from `pdudef.json`.
         "robot_name": "Drone",
         "pdu_name": "cmd"
       },
-      "direction": "ros_to_pdu",
       "topic": "/hakoniwa/drone/cmd"
     }
   ]

@@ -52,6 +52,7 @@ setup(
             f"share/{package_name}/examples/zenoh/config",
             [
                 "examples/zenoh/config/zenoh_binding.json",
+                "examples/zenoh/config/zenoh_bidirectional_binding.json",
                 "examples/zenoh/config/endpoint_ros_bridge.json",
                 "examples/zenoh/config/pdudef.json",
                 "examples/zenoh/config/pdutypes.json",

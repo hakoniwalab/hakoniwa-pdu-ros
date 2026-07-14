@@ -23,7 +23,6 @@ binding 設定は最小限です。
         "robot_name": "Drone",
         "pdu_name": "pos"
       },
-      "direction": "pdu_to_ros",
       "topic": "/hakoniwa/drone/pos"
     }
   ]
@@ -31,6 +30,8 @@ binding 設定は最小限です。
 ```
 
 PDU 型、channel ID、payload size は `pdudef.json` から解決します。
+`direction` を省略した binding は双方向です。片方向に制限したい場合だけ
+`pdu_to_ros` または `ros_to_pdu` を明示します。
 
 ## Conversion Strategy
 
@@ -82,7 +83,7 @@ converter が無い型は起動時に失敗させます。
 - `hakoniwa_pdu_ros/type_mapper.py`
   generated converter と ROS message の間をつなぐ
 - `hakoniwa_pdu_ros/bridge_node.py`
-  `pdu_to_ros` / `ros_to_pdu` を配線する ROS node
+  双方向 binding、または明示された `pdu_to_ros` / `ros_to_pdu` を配線する ROS node
 
 ## Data Flow
 

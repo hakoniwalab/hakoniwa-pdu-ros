@@ -3,12 +3,25 @@
 This example maps the two Zenoh keys used by
 `hakoniwa-pdu-endpoint/python/examples/zenoh` to ROS 2 topics.
 
-The endpoint demo publishes raw Hakoniwa PDU payloads on these Zenoh keys:
+The bidirectional demo uses these Zenoh keys and ROS topics:
 
 | Zenoh key | PDU | ROS type | ROS topic |
 | --- | --- | --- | --- |
 | `hakoniwa/demo/0` | `demo/command` | `std_msgs/msg/UInt16` | `/hakoniwa/demo/command` |
 | `hakoniwa/demo/1` | `demo/debuginfo` | `std_msgs/msg/UInt16` | `/hakoniwa/demo/debuginfo` |
+
+When `direction` is omitted in the binding config, the bridge creates both
+directions for that PDU: Zenoh -> ROS and ROS -> Zenoh.
+
+```json
+{
+  "pdu_key": {
+    "robot_name": "demo",
+    "pdu_name": "command"
+  },
+  "topic": "/hakoniwa/demo/command"
+}
+```
 
 ## Prerequisites
 
@@ -82,14 +95,14 @@ Terminal 2: start the ROS bridge.
 
 ```bash
 ros2 run hakoniwa_pdu_ros bridge \
-  --config "${PKG_SHARE}/examples/zenoh/config/zenoh_binding.json"
+  --config "${PKG_SHARE}/examples/zenoh/config/zenoh_bidirectional_binding.json"
 ```
 
 During local development before install:
 
 ```bash
 python3 -m hakoniwa_pdu_ros \
-  --config examples/zenoh/config/zenoh_binding.json
+  --config examples/zenoh/config/zenoh_bidirectional_binding.json
 ```
 
 Terminal 3: observe the ROS topics.
@@ -109,16 +122,16 @@ You should see:
 /hakoniwa/demo/debuginfo [std_msgs/msg/UInt16]
 ```
 
-Then echo the bridged topics:
-
-```bash
-ros2 topic echo /hakoniwa/demo/command
-```
-
-In another shell, you can also observe:
+Then echo the response topic:
 
 ```bash
 ros2 topic echo /hakoniwa/demo/debuginfo
+```
+
+In another shell, check that the command topic exists:
+
+```bash
+ros2 topic info /hakoniwa/demo/command
 ```
 
 Terminal 4: run the endpoint demo responder.
@@ -128,43 +141,40 @@ cd ../hakoniwa-pdu-endpoint
 python3 python/examples/zenoh/command_sub.py
 ```
 
-Terminal 5: run the endpoint demo publisher.
-
-```bash
-cd ../hakoniwa-pdu-endpoint
-python3 python/examples/zenoh/command_pub.py
-```
-
-`command_pub.py` sends `command=1, 2, 3...`.
-`command_sub.py` receives each command and sends `debuginfo=command+1000`.
-The bridge publishes both values as ROS `std_msgs/msg/UInt16` messages.
-
-## ROS Topic Publish Check
-
-The `examples/zenoh` bridge maps both PDUs from Zenoh to ROS topics, so
-`ros2 topic pub` is not required for the normal receive-path demo. It is still
-useful to confirm that the ROS graph and message type are working.
-
-In one terminal:
-
-```bash
-ros2 topic echo /hakoniwa/demo/command
-```
-
-In another terminal:
+Terminal 5: publish a command from ROS.
 
 ```bash
 ros2 topic pub --once /hakoniwa/demo/command std_msgs/msg/UInt16 "{data: 123}"
 ```
 
-You should see:
+`command_sub.py` receives the command over Zenoh and sends
+`debuginfo=command+1000`. The bridge publishes the response to
+`/hakoniwa/demo/debuginfo`, so the expected ROS output is:
 
 ```text
-data: 123
+data: 1123
 ```
 
-This checks normal ROS publish/subscribe visibility. It does not send data to
-Zenoh, because the `command` binding in this example is `pdu_to_ros`.
+Do not manually publish to `/hakoniwa/demo/debuginfo` during this demo. Because
+the binding is bidirectional, publishing to that topic also sends
+`demo/debuginfo` back to Zenoh.
+
+## Receive-Only Variant
+
+If you only want to observe the two Zenoh keys as ROS topics, explicitly set
+`direction` to `pdu_to_ros` and use the receive-only config:
+
+```bash
+ros2 run hakoniwa_pdu_ros bridge \
+  --config "${PKG_SHARE}/examples/zenoh/config/zenoh_binding.json"
+```
+
+That variant maps both `command` and `debuginfo` from Zenoh to ROS topics:
+
+```text
+hakoniwa/demo/0 -> /hakoniwa/demo/command
+hakoniwa/demo/1 -> /hakoniwa/demo/debuginfo
+```
 
 ## Production Setup
 
@@ -252,7 +262,7 @@ Then start the bridge on the ROS machine:
 
 ```bash
 ros2 run hakoniwa_pdu_ros bridge \
-  --config "${PKG_SHARE}/examples/zenoh/config/zenoh_binding.json"
+  --config "${PKG_SHARE}/examples/zenoh/config/zenoh_bidirectional_binding.json"
 ```
 
 ### 4. Point the Raspberry Pi Demo to the Mac Router
@@ -283,31 +293,20 @@ cd ~/project/hakoniwa-pdu-endpoint
 python3 python/examples/zenoh/command_sub.py
 ```
 
-### 5. Run the Publisher on the Mac
-
-If `command_pub.py` runs on the same Mac PC as the router, keep this file as
-`127.0.0.1`:
-
-```text
-python/examples/zenoh/config/comm/zenoh/mac_client.json5
-```
-
-Then run:
-
-```bash
-cd ~/project/hakoniwa-pdu-endpoint
-python3 python/examples/zenoh/command_pub.py --initial-delay 3
-```
-
-### 6. Check ROS Topics
+### 5. Send a Command from ROS
 
 On the ROS machine:
 
 ```bash
-ros2 topic echo /hakoniwa/demo/command
+ros2 topic pub --once /hakoniwa/demo/command std_msgs/msg/UInt16 "{data: 123}"
 ```
 
-And in another terminal:
+The Raspberry Pi responder should receive `command=123` and send
+`debuginfo=1123`.
+
+### 6. Check ROS Response Topic
+
+On the ROS machine:
 
 ```bash
 ros2 topic echo /hakoniwa/demo/debuginfo
@@ -316,9 +315,27 @@ ros2 topic echo /hakoniwa/demo/debuginfo
 Expected flow:
 
 ```text
-Mac command_pub.py -> hakoniwa/demo/0 -> /hakoniwa/demo/command
-Raspberry Pi command_sub.py -> hakoniwa/demo/1 -> /hakoniwa/demo/debuginfo
+ROS /hakoniwa/demo/command -> hakoniwa/demo/0 -> Raspberry Pi command_sub.py
+Raspberry Pi command_sub.py -> hakoniwa/demo/1 -> ROS /hakoniwa/demo/debuginfo
 ```
+
+### 7. Optional: Run the Mac Publisher
+
+If you also want to publish `command=1, 2, 3...` from the endpoint demo on the
+Mac, keep this file as `127.0.0.1` when it runs on the same Mac PC as the
+router:
+
+```text
+python/examples/zenoh/config/comm/zenoh/mac_client.json5
+```
+
+```bash
+cd ~/project/hakoniwa-pdu-endpoint
+python3 python/examples/zenoh/command_pub.py --initial-delay 3
+```
+
+To observe that `command_pub.py` input on ROS, use the receive-only bridge
+variant described above.
 
 ## Troubleshooting
 
@@ -363,7 +380,7 @@ When using `ros2 run`, the config is read from the installed package share
 directory:
 
 ```text
-${PKG_SHARE}/examples/zenoh/config/zenoh_binding.json
+${PKG_SHARE}/examples/zenoh/config/zenoh_bidirectional_binding.json
 ```
 
 After editing source files under `examples/zenoh/config/`, rebuild and source

@@ -18,7 +18,7 @@ def test_load_sample_bridge_config() -> None:
     assert pos_binding.direction == "pdu_to_ros"
     assert pos_binding.pdu_key.robot_name == "Drone"
     assert pos_binding.pdu_key.pdu_name == "pos"
-    assert pos_binding.topic == "/hakoniwa/drone/pos"
+    assert pos_binding.topic == "/pdu/hakoniwa/drone/pos"
     assert pos_binding.channel_id == 0
     assert pos_binding.pdu_size == 72
     assert pos_binding.pdu_type == "geometry_msgs/Twist"
@@ -48,26 +48,26 @@ def test_load_bidirectional_binding_when_direction_is_omitted() -> None:
     assert command_binding.direction == "pdu_to_ros"
     assert command_binding.pdu_key.robot_name == "demo"
     assert command_binding.pdu_key.pdu_name == "command"
-    assert command_binding.topic == "/from_pdu/demo/command"
+    assert command_binding.topic == "/pdu/demo/command"
     assert command_binding.channel_id == 0
     assert command_binding.pdu_type == "std_msgs/UInt16"
 
     assert command_send_binding.direction == "ros_to_pdu"
     assert command_send_binding.pdu_key.pdu_name == "command"
-    assert command_send_binding.topic == "/to_pdu/demo/command"
+    assert command_send_binding.topic == "/demo/command"
     assert command_send_binding.channel_id == 0
     assert command_send_binding.pdu_type == "std_msgs/UInt16"
 
     assert debuginfo_binding.direction == "pdu_to_ros"
     assert debuginfo_binding.pdu_key.robot_name == "demo"
     assert debuginfo_binding.pdu_key.pdu_name == "debuginfo"
-    assert debuginfo_binding.topic == "/from_pdu/demo/debuginfo"
+    assert debuginfo_binding.topic == "/pdu/demo/debuginfo"
     assert debuginfo_binding.channel_id == 1
     assert debuginfo_binding.pdu_type == "std_msgs/UInt16"
 
     assert debuginfo_send_binding.direction == "ros_to_pdu"
     assert debuginfo_send_binding.pdu_key.pdu_name == "debuginfo"
-    assert debuginfo_send_binding.topic == "/to_pdu/demo/debuginfo"
+    assert debuginfo_send_binding.topic == "/demo/debuginfo"
     assert debuginfo_send_binding.channel_id == 1
     assert debuginfo_send_binding.pdu_type == "std_msgs/UInt16"
 
@@ -87,7 +87,7 @@ def test_reject_same_topic_for_both_directions(tmp_path: Path) -> None:
             {
                 "pdu_key": {"robot_name": "demo", "pdu_name": "command"},
                 "direction": "ros_to_pdu",
-                "topic": "/demo/command",
+                "topic": "/pdu/demo/command",
             },
         ],
     }
@@ -97,6 +97,6 @@ def test_reject_same_topic_for_both_directions(tmp_path: Path) -> None:
     try:
         load_config(config_path)
     except ValueError as err:
-        assert "same ROS topic" in str(err)
+        assert "/pdu namespace is reserved" in str(err)
     else:
-        assert False, "expected ValueError for bidirectional bindings on the same topic"
+        assert False, "expected ValueError for reserved /pdu topic"

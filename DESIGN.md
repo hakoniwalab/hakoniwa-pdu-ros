@@ -29,15 +29,18 @@ binding 設定は最小限です。
 ```
 
 PDU 型、channel ID、payload size は `pdudef.json` から解決します。
-`direction` と `topic` を省略した binding は、loader が次の2本の一方向 binding
-に展開します。
+`direction` と `topic` を省略した binding は、`/<robot>/<pdu>` を ROS 側 owner の
+topic として、loader が次の2本の一方向 binding に展開します。
 
-- `pdu_to_ros`: `/from_pdu/<robot>/<pdu>`
-- `ros_to_pdu`: `/to_pdu/<robot>/<pdu>`
+- `pdu_to_ros`: `/pdu/<robot>/<pdu>`
+- `ros_to_pdu`: `/<robot>/<pdu>`
 
+`topic` を指定した場合も、それは ROS 側 owner の topic 名です。PDU 側 owner の
+topic は `/pdu<topic>` として導出します。bridge は `/pdu/...` を subscribe
+しないため、PDU 由来の mirror に ROS 側から publish しても PDU 側には戻りません。
 片方向に制限したい場合だけ `pdu_to_ros` または `ros_to_pdu` を明示します。
-同じ ROS topic に `pdu_to_ros` と `ros_to_pdu` の両方を割り当てる config は、
-feedback loop を避けるため起動前に拒否します。
+`/pdu` namespace を ROS 側 owner の `topic` として指定する config は、
+feedback loop と誤用を避けるため起動前に拒否します。
 
 ## Conversion Strategy
 

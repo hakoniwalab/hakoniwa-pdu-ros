@@ -100,12 +100,18 @@ Important runtime details:
 
 The binding stays intentionally small. Type, channel ID, and payload size are
 resolved from `pdudef.json`. If `direction` and `topic` are omitted, the bridge
-creates safe one-way topics for both directions:
+uses `/<robot>/<pdu>` as the ROS-owned topic and creates a PDU-owned mirror
+under `/pdu`:
 
-- `pdu_to_ros`: `/from_pdu/<robot>/<pdu>`
-- `ros_to_pdu`: `/to_pdu/<robot>/<pdu>`
+- `pdu_to_ros`: `/pdu/<robot>/<pdu>`
+- `ros_to_pdu`: `/<robot>/<pdu>`
 
-Use `direction` or `topic` only when you want to override those defaults.
+If `topic` is set, it is the ROS-owned topic name; the PDU-owned topic is
+derived by adding `/pdu` in front. Use `direction` only when you want a one-way
+binding.
+
+The bridge does not subscribe to `/pdu/...` topics, so publishing to them from
+ROS does not send data back to the PDU side.
 
 ```json
 {

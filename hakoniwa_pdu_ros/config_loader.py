@@ -69,12 +69,14 @@ def _parse_binding(entry: dict, pdu_definition: PduDefinition) -> list[BindingCo
     robot_name = pdu_key_entry["robot_name"]
     pdu_name = pdu_key_entry["pdu_name"]
     pdu = pdu_definition.get(robot_name, pdu_name)
+    ros_topic = entry.get("topic", _default_ros_topic(robot_name, pdu_name))
+    _validate_ros_topic(ros_topic)
 
     return [
         BindingConfig(
             direction=direction,
             pdu_key=PduKeyConfig(robot_name=robot_name, pdu_name=pdu_name),
-            topic=entry.get("topic", _default_topic(direction, robot_name, pdu_name)),
+            topic=_topic_for_direction(direction, ros_topic),
             channel_id=pdu.channel_id,
             pdu_size=pdu.pdu_size,
             pdu_type=pdu.type,
@@ -83,12 +85,28 @@ def _parse_binding(entry: dict, pdu_definition: PduDefinition) -> list[BindingCo
     ]
 
 
-def _default_topic(direction: str, robot_name: str, pdu_name: str) -> str:
-    prefix = {
-        "pdu_to_ros": "from_pdu",
-        "ros_to_pdu": "to_pdu",
-    }[direction]
-    return f"/{prefix}/{robot_name}/{pdu_name}"
+def _default_ros_topic(robot_name: str, pdu_name: str) -> str:
+    return f"/{robot_name}/{pdu_name}"
+
+
+def _topic_for_direction(direction: str, ros_topic: str) -> str:
+    normalized = _normalize_topic(ros_topic)
+    if direction == "pdu_to_ros":
+        return f"/pdu{normalized}"
+    return normalized
+
+
+def _normalize_topic(topic: str) -> str:
+    return topic if topic.startswith("/") else f"/{topic}"
+
+
+def _validate_ros_topic(topic: str) -> None:
+    normalized = _normalize_topic(topic)
+    if normalized == "/pdu" or normalized.startswith("/pdu/"):
+        raise ValueError(
+            "The /pdu namespace is reserved for PDU-owned mirror topics. "
+            f"Use a ROS-owned topic outside /pdu: {normalized}"
+        )
 
 
 def _validate_no_bidirectional_topic_conflicts(bindings: list[BindingConfig]) -> None:

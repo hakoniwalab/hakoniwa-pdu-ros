@@ -96,12 +96,16 @@ generated converter の出力規則に沿って runtime を組んでいます。
 ## Minimal Config
 
 binding は最小限です。型、channel ID、サイズは `pdudef.json` から解決します。
-`direction` と `topic` を省略すると、bridge は両方向の安全な一方向 topic を自動生成します。
+`direction` と `topic` を省略すると、bridge は `/<robot>/<pdu>` を ROS 側 owner の
+topic として使い、PDU 側 owner の mirror を `/pdu` 配下に自動生成します。
 
-- `pdu_to_ros`: `/from_pdu/<robot>/<pdu>`
-- `ros_to_pdu`: `/to_pdu/<robot>/<pdu>`
+- `pdu_to_ros`: `/pdu/<robot>/<pdu>`
+- `ros_to_pdu`: `/<robot>/<pdu>`
 
-これらの default を上書きしたい場合だけ、`direction` または `topic` を指定します。
+`topic` を指定した場合、それは ROS 側 owner の topic 名です。PDU 側 owner の topic は
+その前に `/pdu` を付けて導出します。片方向にしたい場合だけ `direction` を指定します。
+bridge は `/pdu/...` topic を subscribe しないので、ROS からそこへ publish しても
+PDU 側には送信されません。
 
 ```json
 {

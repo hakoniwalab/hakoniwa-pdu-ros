@@ -7,14 +7,19 @@ The bidirectional demo uses these Zenoh keys and ROS topics:
 
 | Zenoh key | PDU | ROS type | ROS topic |
 | --- | --- | --- | --- |
-| `hakoniwa/demo/0` | `demo/command` | `std_msgs/msg/UInt16` | `/from_pdu/demo/command`, `/to_pdu/demo/command` |
-| `hakoniwa/demo/1` | `demo/debuginfo` | `std_msgs/msg/UInt16` | `/from_pdu/demo/debuginfo`, `/to_pdu/demo/debuginfo` |
+| `hakoniwa/demo/0` | `demo/command` | `std_msgs/msg/UInt16` | `/pdu/demo/command`, `/demo/command` |
+| `hakoniwa/demo/1` | `demo/debuginfo` | `std_msgs/msg/UInt16` | `/pdu/demo/debuginfo`, `/demo/debuginfo` |
 
 When `direction` and `topic` are omitted in the binding config, the bridge
-creates both directions with safe default topic names:
+uses `/<robot>/<pdu>` as the ROS-owned topic and creates a PDU-owned mirror
+under `/pdu`:
 
-- `pdu_to_ros`: `/from_pdu/<robot>/<pdu>`
-- `ros_to_pdu`: `/to_pdu/<robot>/<pdu>`
+- `pdu_to_ros`: `/pdu/<robot>/<pdu>`
+- `ros_to_pdu`: `/<robot>/<pdu>`
+
+The `/pdu/...` namespace is reserved for PDU-owned mirror topics. The bridge
+does not subscribe to those topics, so publishing to `/pdu/...` from ROS is
+ignored by the bridge.
 
 ```json
 {
@@ -120,22 +125,22 @@ You should see:
 
 ```text
 /hakoniwa_pdu_ros_bridge
-/from_pdu/demo/command [std_msgs/msg/UInt16]
-/to_pdu/demo/command [std_msgs/msg/UInt16]
-/from_pdu/demo/debuginfo [std_msgs/msg/UInt16]
-/to_pdu/demo/debuginfo [std_msgs/msg/UInt16]
+/pdu/demo/command [std_msgs/msg/UInt16]
+/demo/command [std_msgs/msg/UInt16]
+/pdu/demo/debuginfo [std_msgs/msg/UInt16]
+/demo/debuginfo [std_msgs/msg/UInt16]
 ```
 
 Then echo the response topic:
 
 ```bash
-ros2 topic echo /from_pdu/demo/debuginfo
+ros2 topic echo /pdu/demo/debuginfo
 ```
 
 In another shell, check that the command topic exists:
 
 ```bash
-ros2 topic info /to_pdu/demo/command
+ros2 topic info /demo/command
 ```
 
 Terminal 4: run the endpoint demo responder.
@@ -148,18 +153,18 @@ python3 python/examples/zenoh/command_sub.py
 Terminal 5: publish a command from ROS.
 
 ```bash
-ros2 topic pub --once /to_pdu/demo/command std_msgs/msg/UInt16 "{data: 123}"
+ros2 topic pub --once /demo/command std_msgs/msg/UInt16 "{data: 123}"
 ```
 
 `command_sub.py` receives the command over Zenoh and sends
 `debuginfo=command+1000`. The bridge publishes the response to
-`/from_pdu/demo/debuginfo`, so the expected ROS output is:
+`/pdu/demo/debuginfo`, so the expected ROS output is:
 
 ```text
 data: 1123
 ```
 
-You can also send `demo/debuginfo` to Zenoh through `/to_pdu/demo/debuginfo`,
+You can also send `demo/debuginfo` to Zenoh through `/demo/debuginfo`,
 but it is not needed for this command/response demo.
 
 ## Receive-Only Variant
@@ -175,8 +180,8 @@ ros2 run hakoniwa_pdu_ros bridge \
 That variant maps both `command` and `debuginfo` from Zenoh to ROS topics:
 
 ```text
-hakoniwa/demo/0 -> /hakoniwa/demo/command
-hakoniwa/demo/1 -> /hakoniwa/demo/debuginfo
+hakoniwa/demo/0 -> /pdu/hakoniwa/demo/command
+hakoniwa/demo/1 -> /pdu/hakoniwa/demo/debuginfo
 ```
 
 ## Production Setup
@@ -301,7 +306,7 @@ python3 python/examples/zenoh/command_sub.py
 On the ROS machine:
 
 ```bash
-ros2 topic pub --once /to_pdu/demo/command std_msgs/msg/UInt16 "{data: 123}"
+ros2 topic pub --once /demo/command std_msgs/msg/UInt16 "{data: 123}"
 ```
 
 The Raspberry Pi responder should receive `command=123` and send
@@ -312,14 +317,14 @@ The Raspberry Pi responder should receive `command=123` and send
 On the ROS machine:
 
 ```bash
-ros2 topic echo /from_pdu/demo/debuginfo
+ros2 topic echo /pdu/demo/debuginfo
 ```
 
 Expected flow:
 
 ```text
-ROS /to_pdu/demo/command -> hakoniwa/demo/0 -> Raspberry Pi command_sub.py
-Raspberry Pi command_sub.py -> hakoniwa/demo/1 -> ROS /from_pdu/demo/debuginfo
+ROS /demo/command -> hakoniwa/demo/0 -> Raspberry Pi command_sub.py
+Raspberry Pi command_sub.py -> hakoniwa/demo/1 -> ROS /pdu/demo/debuginfo
 ```
 
 ### 7. Optional: Run the Mac Publisher
@@ -396,32 +401,23 @@ source install/setup.bash
 PKG_SHARE="$(ros2 pkg prefix hakoniwa_pdu_ros)/share/hakoniwa_pdu_ros"
 ```
 
-### Same Topic for Both Directions Is Rejected
+### `/pdu` Is Reserved for PDU-Owned Topics
 
-The bridge rejects configs that map `pdu_to_ros` and `ros_to_pdu` to the same
-ROS topic, because that can create a feedback loop.
+The bridge reserves `/pdu/...` for PDU-owned mirror topics. Do not use `/pdu`
+as the configured ROS-owned `topic`.
 
 This is invalid:
 
 ```json
-[
-  {
-    "pdu_key": {"robot_name": "demo", "pdu_name": "command"},
-    "direction": "pdu_to_ros",
-    "topic": "/demo/command"
-  },
-  {
-    "pdu_key": {"robot_name": "demo", "pdu_name": "command"},
-    "direction": "ros_to_pdu",
-    "topic": "/demo/command"
-  }
-]
+{
+  "pdu_key": {"robot_name": "demo", "pdu_name": "command"},
+  "direction": "ros_to_pdu",
+  "topic": "/pdu/demo/command"
+}
 ```
 
-Use separate topics instead, or omit `topic` and let the bridge generate safe
-defaults:
+Use the ROS-owned topic instead, or omit `topic`:
 
 ```text
-/from_pdu/demo/command
-/to_pdu/demo/command
+/demo/command
 ```

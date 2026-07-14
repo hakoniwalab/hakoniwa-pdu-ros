@@ -94,6 +94,23 @@ python3 -m hakoniwa_pdu_ros \
 
 Terminal 3: observe the ROS topics.
 
+First check that the bridge is visible in the ROS graph:
+
+```bash
+ros2 node list
+ros2 topic list -t
+```
+
+You should see:
+
+```text
+/hakoniwa_pdu_ros_bridge
+/hakoniwa/demo/command [std_msgs/msg/UInt16]
+/hakoniwa/demo/debuginfo [std_msgs/msg/UInt16]
+```
+
+Then echo the bridged topics:
+
 ```bash
 ros2 topic echo /hakoniwa/demo/command
 ```
@@ -121,6 +138,33 @@ python3 python/examples/zenoh/command_pub.py
 `command_pub.py` sends `command=1, 2, 3...`.
 `command_sub.py` receives each command and sends `debuginfo=command+1000`.
 The bridge publishes both values as ROS `std_msgs/msg/UInt16` messages.
+
+## ROS Topic Publish Check
+
+The `examples/zenoh` bridge maps both PDUs from Zenoh to ROS topics, so
+`ros2 topic pub` is not required for the normal receive-path demo. It is still
+useful to confirm that the ROS graph and message type are working.
+
+In one terminal:
+
+```bash
+ros2 topic echo /hakoniwa/demo/command
+```
+
+In another terminal:
+
+```bash
+ros2 topic pub --once /hakoniwa/demo/command std_msgs/msg/UInt16 "{data: 123}"
+```
+
+You should see:
+
+```text
+data: 123
+```
+
+This checks normal ROS publish/subscribe visibility. It does not send data to
+Zenoh, because the `command` binding in this example is `pdu_to_ros`.
 
 ## Production Setup
 
@@ -274,4 +318,60 @@ Expected flow:
 ```text
 Mac command_pub.py -> hakoniwa/demo/0 -> /hakoniwa/demo/command
 Raspberry Pi command_sub.py -> hakoniwa/demo/1 -> /hakoniwa/demo/debuginfo
+```
+
+## Troubleshooting
+
+### Bridge Started but No Node or Topics Appear
+
+The bridge node name is:
+
+```text
+/hakoniwa_pdu_ros_bridge
+```
+
+If `ros2 node list` or `ros2 topic list -t` does not show it, restart the ROS
+daemon and check again:
+
+```bash
+ros2 daemon stop
+ros2 daemon start
+ros2 node list --include-hidden-nodes
+ros2 topic list -t
+```
+
+This can matter after switching RMW implementations, for example after using
+`rmw_zenoh` and then returning to the default RMW.
+
+Also compare these environment variables between the bridge terminal and the
+terminal running `ros2 node list`:
+
+```bash
+echo "ROS_DISTRO=${ROS_DISTRO:-}"
+echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-}"
+echo "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-}"
+echo "ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-}"
+echo "ROS_AUTOMATIC_DISCOVERY_RANGE=${ROS_AUTOMATIC_DISCOVERY_RANGE:-}"
+```
+
+The values must be compatible across terminals. A different `ROS_DOMAIN_ID` is
+enough to hide the bridge from `ros2 node list`.
+
+### Config Changes Do Not Take Effect
+
+When using `ros2 run`, the config is read from the installed package share
+directory:
+
+```text
+${PKG_SHARE}/examples/zenoh/config/zenoh_binding.json
+```
+
+After editing source files under `examples/zenoh/config/`, rebuild and source
+the workspace again:
+
+```bash
+cd ~/project/ros2_ws
+colcon build --packages-select hakoniwa_pdu_ros
+source install/setup.bash
+PKG_SHARE="$(ros2 pkg prefix hakoniwa_pdu_ros)/share/hakoniwa_pdu_ros"
 ```

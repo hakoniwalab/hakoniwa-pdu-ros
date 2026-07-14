@@ -17,6 +17,15 @@ under `/pdu`:
 - `pdu_to_ros`: `/pdu/<robot>/<pdu>`
 - `ros_to_pdu`: `/<robot>/<pdu>`
 
+For this demo:
+
+| Owner | ROS topic | Bridge action | Typical use |
+| --- | --- | --- | --- |
+| ROS | `/demo/command` | subscribe and send to Zenoh key `hakoniwa/demo/0` | send command from ROS |
+| PDU | `/pdu/demo/command` | publish from Zenoh key `hakoniwa/demo/0` | observe command sent by the PDU side |
+| ROS | `/demo/debuginfo` | subscribe and send to Zenoh key `hakoniwa/demo/1` | send debuginfo from ROS, if needed |
+| PDU | `/pdu/demo/debuginfo` | publish from Zenoh key `hakoniwa/demo/1` | read debuginfo returned by the responder |
+
 The `/pdu/...` namespace is reserved for PDU-owned mirror topics. The bridge
 does not subscribe to those topics, so publishing to `/pdu/...` from ROS is
 ignored by the bridge.

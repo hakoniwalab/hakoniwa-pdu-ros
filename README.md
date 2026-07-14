@@ -106,6 +106,11 @@ under `/pdu`:
 - `pdu_to_ros`: `/pdu/<robot>/<pdu>`
 - `ros_to_pdu`: `/<robot>/<pdu>`
 
+| Owner | ROS topic | Bridge action | Typical use |
+| --- | --- | --- | --- |
+| ROS | `<topic>` | subscribe and send to PDU | ROS publishes commands or values for Hakoniwa/PDU |
+| PDU | `/pdu/<topic>` | publish from PDU | ROS reads values owned by Hakoniwa/PDU |
+
 If `topic` is set, it is the ROS-owned topic name; the PDU-owned topic is
 derived by adding `/pdu` in front. Use `direction` only when you want a one-way
 binding.

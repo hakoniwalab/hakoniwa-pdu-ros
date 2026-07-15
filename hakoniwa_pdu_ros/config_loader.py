@@ -47,7 +47,7 @@ def load_config(path: str | Path) -> BindingRootConfig:
         for entry in raw["bindings"]
         for binding in _parse_binding(entry, pdu_definition)
     ]
-    _validate_no_bidirectional_topic_conflicts(bindings)
+    _validate_unique_topics(bindings)
     return BindingRootConfig(
         endpoint_config=endpoint_config,
         pdu_def_path=pdu_def_path,
@@ -109,21 +109,24 @@ def _validate_ros_topic(topic: str) -> None:
         )
 
 
-def _validate_no_bidirectional_topic_conflicts(bindings: list[BindingConfig]) -> None:
-    directions_by_topic: dict[str, set[str]] = {}
+def _validate_unique_topics(bindings: list[BindingConfig]) -> None:
+    bindings_by_topic: dict[str, list[BindingConfig]] = {}
     for binding in bindings:
-        directions_by_topic.setdefault(binding.topic, set()).add(binding.direction)
+        bindings_by_topic.setdefault(binding.topic, []).append(binding)
 
-    conflicting_topics = [
-        topic
-        for topic, directions in directions_by_topic.items()
-        if {"pdu_to_ros", "ros_to_pdu"}.issubset(directions)
-    ]
+    conflicting_topics = [topic for topic, topic_bindings in bindings_by_topic.items() if len(topic_bindings) > 1]
     if conflicting_topics:
-        topics = ", ".join(sorted(conflicting_topics))
+        details = []
+        for topic in sorted(conflicting_topics):
+            refs = ", ".join(
+                f"{binding.direction}:{binding.pdu_key.robot_name}/{binding.pdu_key.pdu_name}"
+                for binding in bindings_by_topic[topic]
+            )
+            details.append(f"{topic} ({refs})")
         raise ValueError(
-            "Refusing bidirectional bindings on the same ROS topic. "
-            f"Use separate topics or omit topic for safe defaults: {topics}"
+            "Refusing multiple bindings on the same ROS topic. "
+            "Use unique topics so each ROS topic has exactly one bridge owner: "
+            + "; ".join(details)
         )
 
 

@@ -30,6 +30,9 @@ The `/pdu/...` namespace is reserved for PDU-owned mirror topics. The bridge
 does not subscribe to those topics, so publishing to `/pdu/...` from ROS is
 ignored by the bridge.
 
+Expanded ROS topics must be unique; the bridge rejects configs that map
+multiple bindings to the same ROS topic.
+
 ```json
 {
   "pdu_key": {
@@ -120,7 +123,8 @@ python3 -m hakoniwa_pdu_ros.gen_zenoh_io \
 ```
 
 The bridge validates `zenoh.io` at startup. If it does not match the bindings,
-startup stops and prints the regeneration command.
+startup stops and prints the regeneration command. This also catches
+`notify_on_recv` drift.
 
 ## Run
 

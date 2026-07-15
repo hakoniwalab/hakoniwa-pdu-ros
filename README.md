@@ -118,6 +118,9 @@ binding.
 The bridge does not subscribe to `/pdu/...` topics, so publishing to them from
 ROS does not send data back to the PDU side.
 
+Expanded ROS topics must be unique; the bridge rejects configs that map
+multiple bindings to the same ROS topic.
+
 ```json
 {
   "endpoint_config": "endpoint_zenoh.json",
@@ -146,7 +149,7 @@ python3 -m hakoniwa_pdu_ros.gen_zenoh_io binding.json --comm comm.json --write
 ```
 
 The bridge validates `zenoh.io` at startup and prints this command if it does
-not match the bindings.
+not match the bindings. This also catches `notify_on_recv` drift.
 
 ## Verified Coverage
 

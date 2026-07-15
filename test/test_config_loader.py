@@ -90,7 +90,7 @@ def test_load_bidirectional_binding_when_direction_is_omitted() -> None:
     assert debuginfo_send_binding.pdu_type == "std_msgs/UInt16"
 
 
-def test_reject_same_topic_for_both_directions(tmp_path: Path) -> None:
+def test_reject_reserved_pdu_topic(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parent.parent
     src_config = repo_root / "examples" / "zenoh" / "config"
 
@@ -118,3 +118,34 @@ def test_reject_same_topic_for_both_directions(tmp_path: Path) -> None:
         assert "/pdu namespace is reserved" in str(err)
     else:
         assert False, "expected ValueError for reserved /pdu topic"
+
+
+def test_reject_duplicate_expanded_topics(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    src_config = repo_root / "examples" / "zenoh" / "config"
+
+    config = {
+        "endpoint_config": str(src_config / "endpoint_ros_bridge.json"),
+        "bindings": [
+            {
+                "pdu_key": {"robot_name": "demo", "pdu_name": "command"},
+                "direction": "ros_to_pdu",
+                "topic": "/demo/shared",
+            },
+            {
+                "pdu_key": {"robot_name": "demo", "pdu_name": "debuginfo"},
+                "direction": "ros_to_pdu",
+                "topic": "/demo/shared",
+            },
+        ],
+    }
+    config_path = tmp_path / "duplicate_topic_binding.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    try:
+        load_config(config_path)
+    except ValueError as err:
+        assert "multiple bindings on the same ROS topic" in str(err)
+        assert "/demo/shared" in str(err)
+    else:
+        assert False, "expected ValueError for duplicate expanded topic"

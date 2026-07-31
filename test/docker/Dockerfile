@@ -11,17 +11,18 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m venv --system-site-packages /opt/hakoniwa-pdu-ros-venv \
-    && /opt/hakoniwa-pdu-ros-venv/bin/pip install --upgrade pip setuptools wheel \
-    && /opt/hakoniwa-pdu-ros-venv/bin/pip install pytest hakoniwa-pdu
+    && /opt/hakoniwa-pdu-ros-venv/bin/python -m pip install --upgrade pip setuptools wheel \
+    && /opt/hakoniwa-pdu-ros-venv/bin/python -m pip install pytest hakoniwa-pdu
 
 WORKDIR /workspace
 COPY . /workspace
 
-RUN /opt/hakoniwa-pdu-ros-venv/bin/pip install -e /workspace
+RUN /opt/hakoniwa-pdu-ros-venv/bin/python -m pip install -e /workspace \
+    && /opt/hakoniwa-pdu-ros-venv/bin/python -c "import hakoniwa_pdu_ros; print(hakoniwa_pdu_ros.__file__)"
 
 ENV PATH=/opt/hakoniwa-pdu-ros-venv/bin:${PATH} \
     RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     ROS_DOMAIN_ID=73 \
     PYTHONUNBUFFERED=1
 
-CMD ["bash", "-lc", "source /opt/ros/jazzy/setup.bash && pytest -q -s test/native"]
+CMD ["bash", "-lc", "source /opt/ros/jazzy/setup.bash && exec /opt/hakoniwa-pdu-ros-venv/bin/python -m pytest -q -s test/native"]

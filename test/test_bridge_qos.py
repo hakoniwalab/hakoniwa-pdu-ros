@@ -90,7 +90,7 @@ def test_subscription_uses_resolved_qos_and_diagnostic_callback(monkeypatch) -> 
     )
     logger = _Logger()
     node._manager = types.SimpleNamespace(send=lambda *_: None)
-    node._subscriptions = []
+    node._subscriptions = ["rclpy-owned-sentinel"]
     node.get_logger = lambda: logger
     captured: dict[str, object] = {}
 
@@ -129,6 +129,7 @@ def test_subscription_uses_resolved_qos_and_diagnostic_callback(monkeypatch) -> 
     assert profile.history is _Policy.KEEP_LAST
     assert captured["topic"] == "/joint_states"
     assert "subscription QoS for /joint_states" in logger.infos[0]
+    assert node._subscriptions == ["rclpy-owned-sentinel"]
 
     event_callbacks = captured["event_callbacks"]
     event_callbacks.incompatible_qos(

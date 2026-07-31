@@ -14,6 +14,14 @@ class PduKeyConfig:
 
 
 @dataclass(frozen=True)
+class QosConfig:
+    history: str = "keep_last"
+    depth: int = 10
+    reliability: str = "reliable"
+    durability: str = "volatile"
+
+
+@dataclass(frozen=True)
 class BindingConfig:
     direction: str
     pdu_key: PduKeyConfig
@@ -21,6 +29,7 @@ class BindingConfig:
     channel_id: int
     pdu_size: int
     pdu_type: str
+    qos: QosConfig
 
 
 @dataclass(frozen=True)
@@ -71,6 +80,7 @@ def _parse_binding(entry: dict, pdu_definition: PduDefinition) -> list[BindingCo
     pdu = pdu_definition.get(robot_name, pdu_name)
     ros_topic = entry.get("topic", _default_ros_topic(robot_name, pdu_name))
     _validate_ros_topic(ros_topic)
+    qos = _parse_qos(entry.get("qos"))
 
     return [
         BindingConfig(
@@ -80,9 +90,65 @@ def _parse_binding(entry: dict, pdu_definition: PduDefinition) -> list[BindingCo
             channel_id=pdu.channel_id,
             pdu_size=pdu.pdu_size,
             pdu_type=pdu.type,
+            qos=qos,
         )
         for direction in directions
     ]
+
+
+def _parse_qos(raw: object) -> QosConfig:
+    if raw is None:
+        return QosConfig()
+    if not isinstance(raw, dict):
+        raise ValueError("Binding qos must be an object")
+
+    allowed_keys = {"history", "depth", "reliability", "durability"}
+    unknown_keys = sorted(set(raw) - allowed_keys)
+    if unknown_keys:
+        raise ValueError(f"Unsupported binding qos fields: {', '.join(unknown_keys)}")
+
+    history = _parse_qos_choice(
+        raw,
+        "history",
+        default="keep_last",
+        allowed={"keep_last", "keep_all"},
+    )
+    reliability = _parse_qos_choice(
+        raw,
+        "reliability",
+        default="reliable",
+        allowed={"reliable", "best_effort"},
+    )
+    durability = _parse_qos_choice(
+        raw,
+        "durability",
+        default="volatile",
+        allowed={"volatile", "transient_local"},
+    )
+    depth = raw.get("depth", 10)
+    if isinstance(depth, bool) or not isinstance(depth, int) or depth <= 0:
+        raise ValueError("Binding qos.depth must be a positive integer")
+
+    return QosConfig(
+        history=history,
+        depth=depth,
+        reliability=reliability,
+        durability=durability,
+    )
+
+
+def _parse_qos_choice(
+    raw: dict,
+    field: str,
+    *,
+    default: str,
+    allowed: set[str],
+) -> str:
+    value = raw.get(field, default)
+    if not isinstance(value, str) or value not in allowed:
+        supported = ", ".join(sorted(allowed))
+        raise ValueError(f"Binding qos.{field} must be one of: {supported}")
+    return value
 
 
 def _default_ros_topic(robot_name: str, pdu_name: str) -> str:

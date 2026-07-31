@@ -1,8 +1,14 @@
 import rclpy
+from rclpy.event_handler import SubscriptionEventCallbacks
 from rclpy.node import Node
 
 from hakoniwa_pdu_ros.config_loader import BindingConfig, BindingRootConfig, load_config
 from hakoniwa_pdu_ros.pdu_endpoint import PduEndpointManager
+from hakoniwa_pdu_ros.qos import (
+    describe_qos,
+    make_incompatible_qos_callback,
+    to_rclpy_qos_profile,
+)
 from hakoniwa_pdu_ros.type_mapper import (
     import_ros_msg_class,
     pdu_bytes_to_ros_msg,
@@ -42,8 +48,12 @@ class HakoniwaRosBridgeNode(Node):
 
     def _setup_in_binding(self, binding: BindingConfig) -> None:
         msg_cls = import_ros_msg_class(binding.pdu_type)
-        publisher = self.create_publisher(msg_cls, binding.topic, 10)
+        qos_profile = to_rclpy_qos_profile(binding.qos)
+        publisher = self.create_publisher(msg_cls, binding.topic, qos_profile)
         self._publishers.append(publisher)
+        self.get_logger().info(
+            f"publisher QoS for {binding.topic}: {describe_qos(binding.qos)}"
+        )
 
         def _on_recv(data: bytes) -> None:
             msg = pdu_bytes_to_ros_msg(data, binding.pdu_type)
@@ -58,6 +68,7 @@ class HakoniwaRosBridgeNode(Node):
 
     def _setup_out_binding(self, binding: BindingConfig) -> None:
         msg_cls = import_ros_msg_class(binding.pdu_type)
+        qos_profile = to_rclpy_qos_profile(binding.qos)
 
         def _on_msg(msg: object) -> None:
             data = ros_msg_to_pdu_bytes(msg, binding.pdu_type)
@@ -68,8 +79,24 @@ class HakoniwaRosBridgeNode(Node):
                 data,
             )
 
-        subscription = self.create_subscription(msg_cls, binding.topic, _on_msg, 10)
+        event_callbacks = SubscriptionEventCallbacks(
+            incompatible_qos=make_incompatible_qos_callback(
+                self.get_logger().warning,
+                binding.topic,
+                binding.qos,
+            )
+        )
+        subscription = self.create_subscription(
+            msg_cls,
+            binding.topic,
+            _on_msg,
+            qos_profile,
+            event_callbacks=event_callbacks,
+        )
         self._subscriptions.append(subscription)
+        self.get_logger().info(
+            f"subscription QoS for {binding.topic}: {describe_qos(binding.qos)}"
+        )
 
 
 def run(config_path: str | None = None) -> None:

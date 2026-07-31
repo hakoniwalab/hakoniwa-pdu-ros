@@ -114,6 +114,43 @@ PDU 側には送信されません。
 展開後の ROS topic は一意である必要があります。同じ ROS topic に複数 binding が
 割り当たる config は bridge が拒否します。
 
+各 binding には ROS 2 QoS を任意指定できます。`BEST_EFFORT` を使う
+`/joint_states` などの sensor publisher を購読する場合に使用します。
+
+```json
+{
+  "pdu_key": {
+    "robot_name": "Tobas",
+    "pdu_name": "joint_states"
+  },
+  "direction": "ros_to_pdu",
+  "topic": "/joint_states",
+  "qos": {
+    "history": "keep_last",
+    "depth": 10,
+    "reliability": "best_effort",
+    "durability": "volatile"
+  }
+}
+```
+
+指定できる値と既定値は次のとおりです。
+
+| 項目 | 値 | 既定値 |
+| --- | --- | --- |
+| `history` | `keep_last`, `keep_all` | `keep_last` |
+| `depth` | 正の整数 | `10` |
+| `reliability` | `reliable`, `best_effort` | `reliable` |
+| `durability` | `volatile`, `transient_local` | `volatile` |
+
+`qos` を省略した場合は従来の bridge と同じ動作です。`direction` を省略して
+双方向へ展開する場合、同じ QoS 設定を両方向へ適用します。`depth` は常に正の整数を
+指定しますが、`history` が `keep_all` の場合は ROS 2 では使用されません。
+
+bridge は起動時に各 publisher/subscription の解決済み QoS をログへ出します。
+subscription に対して ROS 2 が publisher QoS の不整合を通知した場合は、
+topic と要求 QoS を含む警告を出します。
+
 ```json
 {
   "endpoint_config": "endpoint_zenoh.json",

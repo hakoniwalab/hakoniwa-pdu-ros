@@ -42,6 +42,32 @@ topic は `/pdu<topic>` として導出します。bridge は `/pdu/...` を sub
 `/pdu` namespace を ROS 側 owner の `topic` として指定する config は、
 feedback loop と誤用を避けるため起動前に拒否します。
 
+### QoS Contract
+
+binding の `qos` は任意です。省略時は、従来 `create_publisher()` /
+`create_subscription()` に depth `10` を渡していた動作と同じになるよう、次を使います。
+
+```json
+{
+  "history": "keep_last",
+  "depth": 10,
+  "reliability": "reliable",
+  "durability": "volatile"
+}
+```
+
+個別項目だけを指定した場合も、残りはこの既定値で補います。不明な項目、未対応の値、
+正でない `depth` は起動前に拒否します。`direction` 省略で2本へ展開した binding には
+同じ QoS を適用します。
+
+設定値は `config_loader.py` の ROS 非依存な `QosConfig` として保持し、
+`qos.py` でのみ `rclpy.qos.QoSProfile` へ変換します。これにより JSON 契約の検証を
+ROS 2 未導入環境でもテストできます。
+
+subscription 作成時には ROS 2 の incompatible QoS event callback を登録します。
+実際の publisher と互換性がない場合、topic、要求 QoS、ROS 2 が通知した policy kind を
+警告ログへ出します。通常のデータ callback や PDU 送信経路には影響させません。
+
 ## Conversion Strategy
 
 変換経路:
@@ -91,6 +117,8 @@ converter が無い型は起動時に失敗させます。
   `Endpoint` を包む薄い wrapper
 - `hakoniwa_pdu_ros/type_mapper.py`
   generated converter と ROS message の間をつなぐ
+- `hakoniwa_pdu_ros/qos.py`
+  binding QoS の `rclpy` profile への変換と不整合診断 callback を提供する
 - `hakoniwa_pdu_ros/bridge_node.py`
   loader が展開した一方向 binding を ROS publisher/subscription に配線する ROS node
 

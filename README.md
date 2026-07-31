@@ -121,6 +121,45 @@ ROS does not send data back to the PDU side.
 Expanded ROS topics must be unique; the bridge rejects configs that map
 multiple bindings to the same ROS topic.
 
+Each binding can optionally declare ROS 2 QoS. This is useful for sensor
+publishers such as `/joint_states` that use `BEST_EFFORT`:
+
+```json
+{
+  "pdu_key": {
+    "robot_name": "Tobas",
+    "pdu_name": "joint_states"
+  },
+  "direction": "ros_to_pdu",
+  "topic": "/joint_states",
+  "qos": {
+    "history": "keep_last",
+    "depth": 10,
+    "reliability": "best_effort",
+    "durability": "volatile"
+  }
+}
+```
+
+Supported values and defaults:
+
+| Field | Values | Default |
+| --- | --- | --- |
+| `history` | `keep_last`, `keep_all` | `keep_last` |
+| `depth` | positive integer | `10` |
+| `reliability` | `reliable`, `best_effort` | `reliable` |
+| `durability` | `volatile`, `transient_local` | `volatile` |
+
+Omitting `qos` preserves the previous bridge behavior. When `direction` is
+omitted, the same QoS settings are applied to both expanded directions.
+`depth` remains required to be positive in the config; ROS 2 ignores it when
+`history` is `keep_all`.
+
+At startup, the bridge logs the resolved QoS for every publisher and
+subscription. If ROS 2 reports an incompatible publisher QoS for a
+subscription, the bridge logs a warning containing the topic and requested
+profile.
+
 ```json
 {
   "endpoint_config": "endpoint_zenoh.json",

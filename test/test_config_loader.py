@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 
-from hakoniwa_pdu_ros.config_loader import load_config
+from hakoniwa_pdu_ros.config_loader import QosConfig, load_config
 
 
 def test_load_sample_bridge_config() -> None:
@@ -24,6 +24,7 @@ def test_load_sample_bridge_config() -> None:
     assert pos_binding.channel_id == 0
     assert pos_binding.pdu_size == 72
     assert pos_binding.pdu_type == "geometry_msgs/Twist"
+    assert pos_binding.qos == QosConfig()
 
     assert pos_send_binding.direction == "ros_to_pdu"
     assert pos_send_binding.pdu_key.robot_name == "Drone"
@@ -48,6 +49,7 @@ def test_load_sample_bridge_config() -> None:
     assert cmd_send_binding.channel_id == 1
     assert cmd_send_binding.pdu_size == 72
     assert cmd_send_binding.pdu_type == "geometry_msgs/Twist"
+    assert cmd_send_binding.qos == QosConfig()
 
 
 def test_load_bidirectional_binding_when_direction_is_omitted() -> None:
@@ -149,3 +151,91 @@ def test_reject_duplicate_expanded_topics(tmp_path: Path) -> None:
         assert "/demo/shared" in str(err)
     else:
         assert False, "expected ValueError for duplicate expanded topic"
+
+
+def test_load_explicit_qos_for_both_expanded_directions(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    src_config = repo_root / "examples" / "zenoh" / "config"
+    config = {
+        "endpoint_config": str(src_config / "endpoint_ros_bridge.json"),
+        "bindings": [
+            {
+                "pdu_key": {"robot_name": "demo", "pdu_name": "command"},
+                "qos": {
+                    "history": "keep_all",
+                    "depth": 3,
+                    "reliability": "best_effort",
+                    "durability": "transient_local",
+                },
+            }
+        ],
+    }
+    config_path = tmp_path / "qos_binding.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    loaded = load_config(config_path)
+
+    assert len(loaded.bindings) == 2
+    assert loaded.bindings[0].qos == QosConfig(
+        history="keep_all",
+        depth=3,
+        reliability="best_effort",
+        durability="transient_local",
+    )
+    assert loaded.bindings[1].qos == loaded.bindings[0].qos
+
+
+def test_load_partial_qos_with_legacy_defaults(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    src_config = repo_root / "examples" / "zenoh" / "config"
+    config = {
+        "endpoint_config": str(src_config / "endpoint_ros_bridge.json"),
+        "bindings": [
+            {
+                "pdu_key": {"robot_name": "demo", "pdu_name": "command"},
+                "direction": "ros_to_pdu",
+                "qos": {"reliability": "best_effort"},
+            }
+        ],
+    }
+    config_path = tmp_path / "partial_qos_binding.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    loaded = load_config(config_path)
+
+    assert loaded.bindings[0].qos == QosConfig(reliability="best_effort")
+
+
+def test_reject_invalid_qos_values(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    src_config = repo_root / "examples" / "zenoh" / "config"
+    invalid_qos_values = [
+        "best_effort",
+        {"reliability": "sometimes"},
+        {"durability": "persistent"},
+        {"history": "recent"},
+        {"depth": 0},
+        {"depth": True},
+        {"deadline": 10},
+    ]
+
+    for index, qos in enumerate(invalid_qos_values):
+        config = {
+            "endpoint_config": str(src_config / "endpoint_ros_bridge.json"),
+            "bindings": [
+                {
+                    "pdu_key": {"robot_name": "demo", "pdu_name": "command"},
+                    "direction": "ros_to_pdu",
+                    "qos": qos,
+                }
+            ],
+        }
+        config_path = tmp_path / f"invalid_qos_binding_{index}.json"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+
+        try:
+            load_config(config_path)
+        except ValueError as err:
+            assert "qos" in str(err)
+        else:
+            assert False, f"expected ValueError for qos={qos!r}"

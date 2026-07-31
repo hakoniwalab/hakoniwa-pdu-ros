@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import array
 import sys
 import types
 import unittest
@@ -12,6 +13,7 @@ if str(PDU_PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PDU_PYTHON_SRC))
 
 from hakoniwa_pdu_ros.type_mapper import (  # noqa: E402
+    _copy_matching_fields,
     normalize_ros_msg_type,
     pdu_bytes_to_ros_msg,
     ros_msg_to_pdu_bytes,
@@ -354,7 +356,12 @@ class TypeMapperRegistryCaseTest(unittest.TestCase):
         self._assert_joint_state_roundtrip(["a"], [1.0], [3.0], [4.0])
 
     def test_joint_state_size_2_case(self) -> None:
-        self._assert_joint_state_roundtrip(["a", "b"], [1.0, 2.0], [3.0, 5.0], [4.0, 6.0])
+        self._assert_joint_state_roundtrip(
+            ["joint1", "joint2"],
+            [0.1, 0.2],
+            [1.0, 2.0],
+            [0.01, 0.02],
+        )
 
     def test_point_cloud2_size_0_case(self) -> None:
         self._assert_point_cloud2_roundtrip([], [])
@@ -410,6 +417,28 @@ class TypeMapperRegistryCaseTest(unittest.TestCase):
             [1.5, 2.5],
         )
 
+    def test_reject_unrecognized_declared_primitive_sequence(self) -> None:
+        class UnknownSequence:
+            pass
+
+        class Source:
+            def __init__(self) -> None:
+                self.data = UnknownSequence()
+
+            @classmethod
+            def get_fields_and_field_types(cls) -> dict[str, str]:
+                return {"data": "sequence<double>"}
+
+        class Destination:
+            def __init__(self) -> None:
+                self.data = []
+
+        with self.assertRaisesRegex(
+            TypeError,
+            r"Unsupported sequence value for field 'data'.*UnknownSequence",
+        ):
+            _copy_matching_fields(Source(), Destination())
+
     def _assert_joint_state_roundtrip(
         self,
         name_values: list[str],
@@ -422,9 +451,9 @@ class TypeMapperRegistryCaseTest(unittest.TestCase):
         msg = JointState()
         msg.header.frame_id = "frame"
         msg.name = list(name_values)
-        msg.position = list(position_values)
-        msg.velocity = list(velocity_values)
-        msg.effort = list(effort_values)
+        msg.position = array.array("d", position_values)
+        msg.velocity = array.array("d", velocity_values)
+        msg.effort = array.array("d", effort_values)
 
         binary = ros_msg_to_pdu_bytes(msg, "sensor_msgs/JointState")
         restored = pdu_bytes_to_ros_msg(binary, "sensor_msgs/JointState")
@@ -501,8 +530,8 @@ class TypeMapperRegistryCaseTest(unittest.TestCase):
         msg.scan_time = 0.2
         msg.range_min = 0.3
         msg.range_max = 30.0
-        msg.ranges = list(ranges)
-        msg.intensities = list(intensities)
+        msg.ranges = array.array("f", ranges)
+        msg.intensities = array.array("f", intensities)
 
         binary = ros_msg_to_pdu_bytes(msg, "sensor_msgs/LaserScan")
         restored = pdu_bytes_to_ros_msg(binary, "sensor_msgs/LaserScan")
@@ -551,7 +580,7 @@ class TypeMapperRegistryCaseTest(unittest.TestCase):
             dim.stride = spec["stride"]
             msg.layout.dim.append(dim)
         msg.layout.data_offset = 9
-        msg.data = list(data_values)
+        msg.data = array.array("d", data_values)
 
         binary = ros_msg_to_pdu_bytes(msg, "std_msgs/Float64MultiArray")
         restored = pdu_bytes_to_ros_msg(binary, "std_msgs/Float64MultiArray")

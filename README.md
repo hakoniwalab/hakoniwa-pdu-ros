@@ -94,7 +94,10 @@ Important runtime details:
 
 - fixed primitive arrays may come back as `tuple`
 - primitive `varray` values may come back as `bytearray`
+- rclpy primitive sequences may arrive as `array.array`
 - those values are normalized at runtime using ROS field metadata
+- unsupported values for declared primitive sequence fields fail explicitly
+  instead of being silently dropped
 
 ## Minimal Config
 

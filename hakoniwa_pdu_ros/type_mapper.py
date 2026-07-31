@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import array
 import importlib
 import struct
 from functools import lru_cache
@@ -74,8 +75,13 @@ def _copy_matching_fields(src: object, dst: object) -> None:
                 continue
         if _is_scalar(src_value):
             setattr(dst, name, src_value)
-        elif isinstance(src_value, (list, tuple)):
+        elif isinstance(src_value, (list, tuple, array.array)):
             setattr(dst, name, _copy_list(src_value, dst, name, dst_value))
+        elif _is_declared_sequence_field(src, dst, name):
+            raise TypeError(
+                f"Unsupported sequence value for field '{name}': "
+                f"{type(src_value).__module__}.{type(src_value).__qualname__}"
+            )
         else:
             if dst_value is None:
                 setattr(dst, name, src_value)
@@ -151,6 +157,13 @@ def _field_type_name(obj: object, field_name: str) -> str | None:
     if isinstance(field_types, dict):
         return field_types.get(field_name)
     return None
+
+
+def _is_declared_sequence_field(src: object, dst: object, field_name: str) -> bool:
+    field_type = _field_type_name(src, field_name)
+    if field_type is None:
+        field_type = _field_type_name(dst, field_name)
+    return field_type is not None and _primitive_sequence_type(field_type) is not None
 
 
 def _primitive_sequence_type(field_type: str) -> str | None:

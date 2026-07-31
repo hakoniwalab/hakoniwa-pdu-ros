@@ -96,8 +96,15 @@ converter が無い型は起動時に失敗させます。
 - fixed primitive array が `tuple` で返る
 - primitive `varray` が `bytearray` で返る
 - `string` varray は `list[str]` で返る
+- rclpy の primitive sequence が `array.array` で渡される
 
-`bytearray` の decode には ROS field metadata を使います。
+`bytearray` の decode には ROS field metadata を使います。`array.array` は通常の
+Python `list` へ変換してgenerated converterへ渡します。
+
+ROS field metadata上はprimitive sequenceまたはfixed primitive arrayであるにも
+かかわらず、値が`list`、`tuple`、`array.array`、対応済みbinary表現のいずれでも
+ない場合は`TypeError`にします。未認識のsequence-like objectをstructとして再帰し、
+値を無言で失うことを避けるためです。`numpy.ndarray`は現時点の契約には含めません。
 
 対応済みの代表例:
 

@@ -91,7 +91,10 @@ generated converter の出力規則に沿って runtime を組んでいます。
 
 - fixed primitive array は `tuple` で返ることがある
 - primitive `varray` は `bytearray` で返ることがある
+- rclpy の primitive sequence は `array.array` で渡されることがある
 - それらは ROS field metadata を見て runtime で正規化する
+- primitive sequence と宣言されたfieldに未対応の値が来た場合は、無言で値を捨てず
+  明示的にエラーにする
 
 ## Minimal Config
 

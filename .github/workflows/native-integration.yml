@@ -1,0 +1,23 @@
+name: Native integration
+
+on:
+  pull_request:
+    paths:
+      - "hakoniwa_pdu_ros/**"
+      - "test/native/**"
+      - "test/docker/**"
+      - "package.xml"
+      - "setup.py"
+      - ".github/workflows/native-integration.yml"
+  workflow_dispatch:
+
+jobs:
+  native-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ROS 2 Jazzy native integration tests
+        run: bash test/docker/run_native_tests.sh

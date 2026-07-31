@@ -17,6 +17,7 @@ from hakoniwa_pdu_ros.type_mapper import (
 )
 from hakoniwa_pdu_ros.zenoh_io import validate_zenoh_io_for_config
 
+
 class HakoniwaRosBridgeNode(Node):
     """ROS 2 bridge node for Hakoniwa PDU bindings."""
 
@@ -24,8 +25,6 @@ class HakoniwaRosBridgeNode(Node):
         super().__init__("hakoniwa_pdu_ros_bridge")
         self._config = config
         self._manager: PduEndpointManager | None = None
-        self._publishers = []
-        self._subscriptions = []
         self.get_logger().info("hakoniwa_pdu_ros bridge node started")
         if self._config is not None:
             self._manager = PduEndpointManager(self._config.endpoint_config)
@@ -50,7 +49,6 @@ class HakoniwaRosBridgeNode(Node):
         msg_cls = import_ros_msg_class(binding.pdu_type)
         qos_profile = to_rclpy_qos_profile(binding.qos)
         publisher = self.create_publisher(msg_cls, binding.topic, qos_profile)
-        self._publishers.append(publisher)
         self.get_logger().info(
             f"publisher QoS for {binding.topic}: {describe_qos(binding.qos)}"
         )
@@ -86,14 +84,13 @@ class HakoniwaRosBridgeNode(Node):
                 binding.qos,
             )
         )
-        subscription = self.create_subscription(
+        self.create_subscription(
             msg_cls,
             binding.topic,
             _on_msg,
             qos_profile,
             event_callbacks=event_callbacks,
         )
-        self._subscriptions.append(subscription)
         self.get_logger().info(
             f"subscription QoS for {binding.topic}: {describe_qos(binding.qos)}"
         )

@@ -38,6 +38,20 @@ setup(
             f"share/{package_name}/config/sample/pdu",
             ["config/sample/pdu/pdudef.json", "config/sample/pdu/pdutypes.json"],
         ),
+        (f"share/{package_name}/schema", ["schema/service-binding.schema.json"]),
+        (
+            f"share/{package_name}/config/service",
+            [
+                "config/service/add_two_ints.json",
+                "config/service/client-endpoint.json",
+                "config/service/rpc-endpoints.json",
+                "config/service/rpc-client-comm.json",
+                "config/service/rpc-pdudef.json",
+                "config/service/rpc-queue.json",
+                "config/service/rpc-server-comm.json",
+                "config/service/server-endpoint.json",
+            ],
+        ),
         (
             f"share/{package_name}/examples",
             [
@@ -84,6 +98,7 @@ setup(
     entry_points={
         "console_scripts": [
             "bridge = hakoniwa_pdu_ros.__main__:main",
+            "service-server = hakoniwa_pdu_ros.service_server_node:main",
         ],
     },
 )

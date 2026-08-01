@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hakoniwalab.github.io/hakoniwa-pdu-ros/schema/service-binding.schema.json",
+  "title": "Hakoniwa ROS 2 Service Server Bridge Binding",
+  "description": "Configuration consumed by the standalone ROS Service Server / Hakoniwa RPC Client bridge node.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "kind", "rpc", "bindings"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1
+    },
+    "kind": {
+      "const": "ros_service_server",
+      "description": "Role of the ROS-facing node. The current schema defines only the ROS Service Server / Hakoniwa RPC Client direction."
+    },
+    "rpc": {
+      "$ref": "#/$defs/rpc"
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/binding"
+      }
+    }
+  },
+  "$defs": {
+    "rpc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client_endpoint", "endpoint_config"],
+      "properties": {
+        "client_endpoint": {
+          "$ref": "#/$defs/endpoint_ref"
+        },
+        "endpoint_config": {
+          "type": "string",
+          "minLength": 1,
+          "description": "PDU-RPC endpoint configuration path, resolved relative to this binding file."
+        },
+        "delta_time_usec": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1000
+        },
+        "time_source_type": {
+          "type": "string",
+          "minLength": 1,
+          "default": "real"
+        }
+      }
+    },
+    "endpoint_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "endpoint_id"],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endpoint_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "heap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "response_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ros_name",
+        "ros_type",
+        "hakoniwa_service",
+        "server_endpoints",
+        "max_clients",
+        "timeout_msec"
+      ],
+      "properties": {
+        "ros_name": {
+          "type": "string",
+          "pattern": "^/[A-Za-z_][A-Za-z0-9_/]*$",
+          "description": "Absolute ROS 2 service name exposed by the bridge."
+        },
+        "ros_type": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*/srv/[A-Za-z][A-Za-z0-9_]*$",
+          "description": "ROS 2 service interface in package/srv/Type form. The installed .srv definition is the IDL source."
+        },
+        "hakoniwa_service": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Service name generated into the PDU-RPC service configuration."
+        },
+        "server_endpoints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/endpoint_ref"
+          },
+          "description": "PDU-RPC server endpoints generated into the server-side service configuration."
+        },
+        "max_clients": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum concurrent clients for this service. Client names are generated automatically."
+        },
+        "timeout_msec": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Bridge-side RPC timeout in milliseconds."
+        },
+        "heap": {
+          "$ref": "#/$defs/heap"
+        },
+        "pdu_service_type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional generated PDU service type override. Normally resolved from ros_type."
+        }
+      }
+    }
+  }
+}

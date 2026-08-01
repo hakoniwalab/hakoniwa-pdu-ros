@@ -1,353 +1,218 @@
-# Hakoniwa Server Specification
+# ROS 2 Service Bridge Specification
+
+[日本語](spec-server.ja.md)
 
 ## Purpose
 
-This document defines the server-side contract for exposing Hakoniwa PDU-RPC
-services to ROS 2 through `hakoniwa-pdu-ros`.
-
-The supported direction is:
+This document defines the ROS 2 Service Server to Hakoniwa PDU-RPC Client
+bridge contract.
 
 ```text
 ROS 2 Service Client
         |
-        | ROS 2 Service request
         v
-hakoniwa-pdu-ros
-ROS 2 Service Server / Hakoniwa RPC Client
+HakoniwaRosServiceServerNode   (ROS Service Server)
         |
-        | PDU-RPC request
         v
-Hakoniwa PDU-RPC Service Server
+hakoniwa-pdu-rpc RpcClient     (Hakoniwa RPC Client)
+        |
+        v
+Hakoniwa Asset RPC Server
 ```
 
-The reverse direction, where Hakoniwa calls a ROS 2 Service Server, is outside
-the scope of this specification and must be defined separately.
+Topic bridging remains in the existing independent Topic Bridge Node and
+configuration. The initial implementation does not cover the reverse RPC
+direction, ROS Actions, or application-specific error payloads.
 
-## Design Principles
+## Node Roles and Naming
 
-The server bridge follows these principles:
+`server` and `client` always describe the ROS-facing role. The current target is
+`HakoniwaRosServiceServerNode`: it receives requests as a ROS Service Server and
+acts as a Hakoniwa RPC Client.
 
-1. Reuse the existing `hakoniwa-pdu-rpc` request, timeout, cancellation, and
-   response state machine.
-2. Reuse `hakoniwa-pdu-endpoint` for transport and connection lifecycle.
-3. Do not invent a bridge-specific service error payload.
-4. Return a ROS 2 response only when a valid Hakoniwa RPC response is obtained.
-5. Treat timeout and capacity limits as bridge-side resource-management events.
-6. Make ROS 2 client timeout and failure interpretation the responsibility of
-   the ROS 2 client application.
+The reverse direction will be implemented separately as
+`HakoniwaRosServiceClientNode`. It will act as a ROS Service Client and a
+Hakoniwa RPC Server. The two directions are not mixed in one node or Binding.
 
-## Binding Configuration
+| Binding `kind` | ROS role | Hakoniwa role | Status |
+| --- | --- | --- | --- |
+| `ros_service_server` | Service Server | RPC Client | Defined by this specification |
+| `ros_service_client` | Service Client | RPC Server | Future separate node and Binding contract |
 
-The ROS-to-Hakoniwa mapping is declared separately from the PDU-RPC transport
+The `server` and `client` in the generated filenames
+`rpc-server-services.json` and `rpc-client-services.json` describe PDU-RPC
+roles, not the Binding `kind`. A current `ros_service_server` Binding generates
+both files so the Bridge and its static counterpart use the same resolved
 configuration.
 
-Example:
+## Canonical Service Binding
+
+The standalone Service Node reads a Service Binding conforming to
+[`schema/service-binding.schema.json`](../schema/service-binding.schema.json).
+An AddTwoInts example is available at
+[`config/service/add_two_ints.json`](../config/service/add_two_ints.json).
+
+The user declares:
+
+- `kind`, identifying the ROS-facing role (currently `ros_service_server`);
+- ROS service name and `package/srv/Type`;
+- Hakoniwa service name;
+- RPC client and server endpoint references;
+- per-service `max_clients`;
+- bridge timeout;
+- optional request/response heap capacity;
+- an optional PDU service type override.
+
+The user does not declare RPC client names or channel IDs.
+
+Relative `rpc.endpoint_config` paths are resolved from the Service Binding
+file. Endpoint references must exist in that endpoint registry. Unknown fields,
+duplicate service names, duplicate normalized service keys, invalid capacities,
+and unresolved types are rejected before generation or startup.
+
+## Config Generation
+
+Generate role-specific PDU-RPC service configs with:
+
+```bash
+python3 -m hakoniwa_pdu_ros.generate_service_config \
+  --config config/service/add_two_ints.json \
+  --offset-dir /path/to/share/hakoniwa/offset
+```
+
+The generator resolves:
+
+1. the installed ROS service class and `.srv` definition;
+2. the matching generated PDU Request/Response packet types from
+   `hakoniwa-pdu`;
+3. packet base sizes from canonical Hakoniwa offset files;
+4. client names, channels, endpoint references, capacities, and heap values.
+
+Output:
+
+```text
+build/generated/service/<binding-id>/
+├── rpc-server-services.json
+└── rpc-client-services.json
+```
+
+Both files are projections of one resolved model. The RPC server config contains
+server endpoint declarations and the generated static client registrations.
+The RPC client config contains the registrations used by the ROS Service Server Node.
+This guarantees that static server and client channel assignments agree.
+
+Generation is deterministic, idempotent, and atomic. `--output-dir` overrides
+the default CWD-relative location. When `--offset-dir` is omitted,
+`HAKO_BINARY_PATH` is used; no implicit system-directory fallback is allowed.
+
+Business Pack places the generated files under:
+
+```text
+work/recipes/<recipe-id>/config/service/
+```
+
+They are Recipe-specific runtime configuration, not Foundation install
+artifacts.
+
+## Client and Channel Allocation
+
+`max_clients` is scoped per Hakoniwa service. The Bridge creates that many RPC
+clients, and each client supports one in-flight request.
+
+Client names use:
+
+```text
+hakoniwa_pdu_ros_<service-key>_<index>
+```
+
+`service-key` is derived from the final component of `hakoniwa_service` and
+normalized to lower snake case. For `Service/Add`, the generated clients start
+with `hakoniwa_pdu_ros_add_0`.
+
+Channel IDs are logical IDs scoped by service. They restart at zero for every
+service:
+
+```text
+requestChannelId  = 2 * client_index
+responseChannelId = 2 * client_index + 1
+```
+
+Therefore client `0` uses channels `0` and `1`; client `1` uses `2` and `3`.
+Different service names may reuse the same IDs.
+
+## Runtime Concurrency
+
+The Service Bridge owns one client pool per binding. It assigns an available
+client immediately and never queues while all clients are busy. A client is
+returned to the pool only after its RPC lifecycle reaches a terminal state.
+
+ROS service callbacks must use the PDU-RPC asynchronous API. RPC worker-thread
+completion is transferred to the ROS executor context before completing the
+ROS response.
+
+When capacity is exhausted, the Bridge logs a structured `BUSY` rejection and
+does not synthesize a successful or zero-filled ROS response. ROS 2 has no
+generic service-error response; the ROS client application remains responsible
+for its own wait timeout and retry policy.
+
+## Timeout and Shutdown
+
+The Bridge uses the normal PDU-RPC timeout/cancel state machine. It does not
+duplicate request IDs or cancellation state.
+
+On timeout:
+
+1. issue cancellation through the PDU-RPC API;
+2. wait for the internal terminal result unless transport is already gone;
+3. discard a late result after the bridge timeout;
+4. release the client only after terminal cleanup;
+5. return no fabricated ROS response.
+
+Shutdown stops accepting requests, resolves or cancels active clients through
+the normal RPC lifecycle, closes all clients, and then destroys ROS entities.
+
+## Type and Heap Contract
+
+The Bridge maps ROS Request/Response bodies recursively by field name. Generated
+converters remain responsible for binary layout and packet headers.
+
+The optional Binding heap uses semantic directions:
 
 ```json
 {
-  "ros_name": "/calculator/add",
-  "ros_type": "example_interfaces/srv/AddTwoInts",
-  "hakoniwa_service": "Service/Add",
-  "timeout_msec": 3000
+  "heap": {
+    "request_bytes": 4096,
+    "response_bytes": 8192
+  }
 }
 ```
 
-Fields:
-
-| Field | Required | Meaning |
-| --- | --- | --- |
-| `ros_name` | yes | ROS 2 service name exposed by the bridge |
-| `ros_type` | yes | ROS 2 service type |
-| `hakoniwa_service` | yes | PDU-RPC service name |
-| `timeout_msec` | yes | Bridge-side timeout for the Hakoniwa RPC operation |
-
-The binding does not declare a fixed PDU-RPC client name. Client-side RPC
-resources are allocated dynamically for each accepted ROS request.
-
-The PDU-RPC configuration remains the source of truth for:
-
-- `maxClients`
-- request and response channels
-- endpoint configuration
-- transport configuration
-- service PDU sizes and types
-
-## Request Lifecycle
-
-Each accepted ROS 2 Service request owns one temporary Hakoniwa RPC client
-session.
-
-```text
-ROS request received
-    -> allocate temporary RPC client resources
-    -> start Endpoint connection
-    -> confirm Endpoint running state
-    -> send PDU-RPC request
-    -> poll for RPC result
-    -> normal response, timeout, disconnect, or send failure
-    -> release Endpoint and RPC resources
-```
-
-A successful request follows this sequence:
-
-```text
-ROS request
-    -> Endpoint connected
-    -> PDU-RPC call
-    -> RESPONSE_IN
-    -> convert PDU response to ROS response
-    -> return ROS response
-    -> close temporary session
-```
-
-The temporary session is not reused for another ROS request.
-
-This request-scoped lifecycle prevents a delayed response from one request from
-being confused with a later request and makes connection cleanup the resource
-release boundary.
-
-## Concurrency and `maxClients`
-
-`maxClients` means the maximum number of concurrent in-flight ROS Service
-requests that can be backed by the Hakoniwa PDU-RPC service.
-
-When the configured capacity is exhausted:
-
-1. The Hakoniwa-side TCP connection is rejected or closed by the server-side
-   connection manager.
-2. The bridge detects failure through Endpoint running state, send failure, or
-   the Endpoint disconnected callback.
-3. The bridge does not start or continue the RPC operation.
-4. The bridge releases all local resources.
-5. The bridge writes an error log.
-6. The bridge does not return a ROS 2 Service response.
-
-The bridge does not queue a request while waiting for a free PDU-RPC client
-slot. Capacity rejection is immediate from the bridge's point of view.
-
-## Endpoint Connection Detection
-
-The bridge uses the public `hakoniwa-pdu-endpoint` lifecycle interfaces.
-
-Connection establishment is observed through Endpoint running state.
-
-Disconnection is observed through the Endpoint disconnected callback, which
-provides:
-
-- endpoint name
-- reason code
-- reason text
-
-A request is aborted immediately when a transport disconnection is detected.
-No cancellation completion is required when the peer connection no longer
-exists.
-
-## Timeout Contract
-
-`timeout_msec` is a bridge-side resource protection setting. It is not a ROS 2
-Service cancellation protocol.
-
-The timeout starts when the bridge begins processing the accepted ROS request.
-
-`hakoniwa-pdu-rpc` defines timeout as a notification while the request remains
-active:
-
-```text
-RUNNING
-    -> RESPONSE_TIMEOUT
-RUNNING
-    -> explicit send_cancel_request()
-CANCELLING
-    -> RESPONSE_IN or RESPONSE_CANCEL
-IDLE
-```
-
-Therefore, when the bridge observes `RESPONSE_TIMEOUT`, it must:
-
-1. Mark the ROS request as timed out.
-2. Explicitly send the PDU-RPC cancellation request.
-3. Continue polling until either normal completion or cancellation completion
-   resolves the PDU-RPC state, unless the transport disconnects first.
-4. Discard any terminal response because the bridge timeout has already
-   expired.
-5. Close the temporary session and release its resources.
-6. Write a timeout log.
-7. Do not return a ROS 2 Service response.
-
-A normal response may win the race after cancellation has been requested. That
-response is still used to terminate the internal PDU-RPC state safely, but it
-is not forwarded to ROS after the bridge timeout.
-
-## ROS 2 Client Responsibility
-
-ROS 2 Services do not provide a generic cancellation contract or a generic
-transport-level error response.
-
-The ROS 2 client application is responsible for:
-
-- choosing its own response wait timeout
-- stopping its local wait when that timeout expires
-- deciding whether to retry
-- interpreting missing responses as timeout, overload, transport failure, or
-  application failure according to its own policy
-
-The bridge does not synthesize a successful response, a zero-filled response,
-or an application-specific error response for infrastructure failures.
-
-## Result Handling
-
-### Normal response
-
-When `RESPONSE_IN` is received before the bridge timeout:
-
-1. Validate the returned service and PDU response.
-2. Convert the PDU response body into the configured ROS response type.
-3. Return the ROS response.
-4. Close the temporary session.
-
-### PDU-RPC timeout
-
-When `RESPONSE_TIMEOUT` is received:
-
-1. Send an explicit cancel request.
-2. Resolve the internal RPC state as described in the timeout contract.
-3. Discard the final result.
-4. Return no ROS response.
-
-### Connection or send failure
-
-When Endpoint connection establishment, request send, or transport operation
-fails:
-
-1. Do not send a PDU-RPC cancellation request when no live peer exists.
-2. Close the temporary session immediately.
-3. Return no ROS response.
-4. Log the failure reason.
-
-### Capacity rejection
-
-When `maxClients` prevents the temporary Endpoint from remaining connected:
-
-1. Treat the request as rejected.
-2. Close local resources.
-3. Return no ROS response.
-4. Log current service and capacity context when available.
-
-## Type Mapping
-
-ROS Service Request and Response values are mapped to the corresponding
-Hakoniwa generated PDU service types.
-
-The mapping must follow the same runtime principles already used by the Topic
-bridge:
-
-- recursive field-name mapping
-- generated PDU converters remain responsible for binary layout
-- bridge code does not implement service PDU layouts manually
-- unsupported or incompatible field mappings fail explicitly
-
-Configuration and type compatibility should be validated during bridge startup
-where possible. Runtime requests must not rely on silent numeric or structural
-coercion.
-
-## Observability
-
-The first implementation requires structured logs for:
-
-- service request accepted
-- RPC connection failure
-- RPC send failure
-- `maxClients` rejection
-- RPC timeout
-- cancellation requested
-- normal response winning the cancellation race
-- cancellation completion
-- transport disconnection
-- response conversion failure
-
-A later implementation may publish operational status through a ROS topic,
-for example:
-
-```text
-/hakoniwa_pdu_ros/service_status
-```
-
-Potential status fields include:
-
-- service name
-- active clients
-- maximum clients
-- completed request count
-- timeout count
-- rejected request count
-- transport error count
-- last error
-
-Status-topic publication is optional and is not required for the initial
-server implementation.
-
-## Required Runtime Adapter
-
-`hakoniwa-pdu-ros` is implemented in Python, while the current
-`hakoniwa-pdu-rpc` runtime client API is implemented in C++.
-
-The server implementation therefore requires a thin Python-accessible adapter
-for the PDU-RPC client lifecycle.
-
-The adapter only needs to expose the client-side capabilities required by this
-specification:
-
-- create and destroy a temporary client session
-- initialize and start Endpoint resources
-- inspect Endpoint running state
-- register a disconnected callback
-- call a configured RPC service with request bytes
-- poll RPC events
-- send an explicit cancel request
-- stop and close resources
-
-The adapter should keep PDU-RPC state-machine details in the C++ layer and
-expose a small stable boundary to Python. A C ABI with CFFI or an equivalent
-thin binding is acceptable. This document does not mandate the binding
-technology.
-
-## Non-Goals
-
-The initial server implementation does not provide:
-
-- Hakoniwa-to-ROS Service calls
-- ROS Action bridging
-- queued waiting for a free `maxClients` slot
-- automatic client retry
-- generic ROS Service error responses
-- persistent RPC client pooling
-- bridge-specific request correlation independent of PDU-RPC
-- guaranteed cancellation of arbitrary server-side application work
-
-## Summary Contract
-
-```text
-Normal:
-ROS request
-    -> temporary Endpoint/RPC session
-    -> PDU-RPC request
-    -> valid PDU-RPC response
-    -> ROS response
-    -> release session
-
-Timeout:
-ROS request
-    -> PDU-RPC timeout
-    -> explicit PDU-RPC cancel
-    -> internal terminal response
-    -> discard result
-    -> release session
-    -> no ROS response
-
-Capacity or transport failure:
-ROS request
-    -> connection/send/disconnect failure
-    -> release session
-    -> log error
-    -> no ROS response
-```
+Both values default to zero and must be non-negative integers. Capacity
+overflow must fail explicitly and must not truncate data.
+
+The generator maps request heap to native `pduSize.server.heapSize` and response
+heap to `pduSize.client.heapSize`. Runtime validation for different non-zero
+values remains dependent on the canonical PDU-RPC/PDU-Python heap contract
+tracked in `hakoniwa-pdu-rpc#39`.
+
+## Verification
+
+ROS-independent tests cover strict Binding validation, offset size resolution,
+deterministic client/channel generation, heap mapping, role-specific golden
+files, atomic writes, and idempotence.
+
+The Docker suite uses Ubuntu 24.04 and ROS 2 Jazzy to resolve the real
+`example_interfaces/srv/AddTwoInts` interface and PyPI `hakoniwa-pdu` generated
+types, then exercises both the Python API and CLI generation paths.
+
+It also builds a Core-free Endpoint and a PDU-RPC revision with Typed
+`call_async()` support. A ROS-independent AddTwoInts RPC fixture uses the
+generated RPC server/client configs over real TCP and verifies the complete
+`19 + 23 = 42` request/response round trip. The later Service Node E2E reuses
+this RPC server and replaces the current Typed RPC client call with the ROS
+Service Server Node.
+
+The normal Service Server Node E2E is implemented on this fixture. A real ROS 2
+Client calls `/add_two_ints` and receives `42` through the Node, Typed RPC, and
+Hakoniwa RPC Server. Concurrency, BUSY, timeout, and shutdown race coverage
+remain follow-up work.

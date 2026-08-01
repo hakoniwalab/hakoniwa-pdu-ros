@@ -1,0 +1,8 @@
+{
+  "type": "buffer",
+  "name": "add_two_ints_rpc_queue",
+  "store": {
+    "mode": "queue",
+    "depth": 16
+  }
+}

@@ -184,6 +184,68 @@ python3 -m hakoniwa_pdu_ros.gen_zenoh_io binding.json --comm comm.json --write
 bridge は起動時に `zenoh.io` を検証し、binding と一致しない場合はこの生成コマンドを表示します。
 これにより `notify_on_recv` のズレも検出できます。
 
+## ROS Service設定generator
+
+ROS Service BridgeはTopic Bridgeとは別Nodeとして構築します。`server` / `client`はROS側の
+役割を表し、現在の`ros_service_server` BindingはROS Service Server / Hakoniwa RPC Clientの
+独立Nodeを対象とします。逆方向のROS Service Client Nodeは将来、別Bindingとして追加します。
+Service Bindingの正本と
+AddTwoIntsの例は次にあります。
+
+- `schema/service-binding.schema.json`
+- `config/service/add_two_ints.json`
+- [`docs/spec-server.ja.md`](docs/spec-server.ja.md)
+
+generatorはinstalled ROS `.srv`、`hakoniwa-pdu`のgenerated型、Hakoniwa offsetを解決し、
+同じresolved modelからRPC Server/Client用設定を生成します。これらの出力名はPDU-RPC側の
+役割を表すため、Bindingの`kind`とは別です。
+
+```bash
+python3 -m hakoniwa_pdu_ros.generate_service_config \
+  --config config/service/add_two_ints.json \
+  --offset-dir /path/to/share/hakoniwa/offset
+```
+
+既定の出力先:
+
+```text
+build/generated/service/add_two_ints/
+├── rpc-server-services.json
+└── rpc-client-services.json
+```
+
+Business Packから利用する場合は、`--output-dir`へ
+`work/recipes/<recipe-id>/config/service`を指定します。client名は
+`hakoniwa_pdu_ros_<service-key>_<index>`形式で生成され、channel IDはserviceごとに
+request `0`、response `1`から連続採番されます。
+
+`--offset-dir`を省略した場合は`HAKO_BINARY_PATH`を使用します。両方とも利用できない場合は、
+暗黙のsystem pathへfallbackせずエラーにします。
+
+ROS Service Server Nodeは次のCLIで起動します。起動時にBindingからRPC設定を生成し、
+serviceごとに`max_clients`個のTyped RPC Client poolを作ります。
+
+```bash
+service-server \
+  --config config/service/add_two_ints.json \
+  --offset-dir /path/to/share/hakoniwa/offset \
+  --rpc-library /path/to/libhakoniwa_pdu_rpc.so
+```
+
+`--rpc-library`省略時は`HAKO_PDU_RPC_LIBRARY`を使用します。ROS callbackは
+`TypedRpcClient.call_async()`の完了を`rclpy` Futureへ渡すため、同期RPC待ちでexecutorを
+ブロックしません。
+
+Docker native testでは、Core不要のEndpointとPDU-RPCをビルドし、生成設定を使って
+AddTwoInts RPC ServerとTyped `call_async()` Clientを実TCP接続します。
+
+```bash
+bash test/docker/run_native_tests.sh
+```
+
+このテストにはHakoniwa RPC基準環境に加え、実際のROS 2 ClientからService Server Nodeを経由する
+AddTwoInts E2Eも含まれます。
+
 ## Verified Coverage
 
 まずは標準 ROS message を常設テスト対象にしています。ここが通れば、

@@ -193,6 +193,71 @@ python3 -m hakoniwa_pdu_ros.gen_zenoh_io binding.json --comm comm.json --write
 The bridge validates `zenoh.io` at startup and prints this command if it does
 not match the bindings. This also catches `notify_on_recv` drift.
 
+## ROS Service Config Generator
+
+The ROS Service Bridge is designed as a node independent from the Topic Bridge.
+`server` and `client` describe the ROS-facing role. The current
+`ros_service_server` Binding targets a ROS Service Server / Hakoniwa RPC Client
+node. The reverse ROS Service Client direction will use a separate node and
+Binding in the future.
+The canonical Service Binding schema and AddTwoInts example are located at:
+
+- `schema/service-binding.schema.json`
+- `config/service/add_two_ints.json`
+- [`docs/spec-server.md`](docs/spec-server.md)
+
+The generator resolves an installed ROS `.srv`, generated types from
+`hakoniwa-pdu`, and Hakoniwa offset files. It then emits RPC Server and Client
+configs from one resolved model. Those output names describe PDU-RPC roles and
+are independent of the Binding `kind`.
+
+```bash
+python3 -m hakoniwa_pdu_ros.generate_service_config \
+  --config config/service/add_two_ints.json \
+  --offset-dir /path/to/share/hakoniwa/offset
+```
+
+Default output:
+
+```text
+build/generated/service/add_two_ints/
+├── rpc-server-services.json
+└── rpc-client-services.json
+```
+
+When invoked from Business Pack, pass
+`work/recipes/<recipe-id>/config/service` through `--output-dir`. Client names
+use `hakoniwa_pdu_ros_<service-key>_<index>`. Channel IDs are scoped per
+service and allocated consecutively from request `0`, response `1`.
+
+When `--offset-dir` is omitted, the generator uses `HAKO_BINARY_PATH`. It does
+not silently fall back to a system directory when neither is available.
+
+Run the ROS Service Server Node with:
+
+```bash
+service-server \
+  --config config/service/add_two_ints.json \
+  --offset-dir /path/to/share/hakoniwa/offset \
+  --rpc-library /path/to/libhakoniwa_pdu_rpc.so
+```
+
+At startup it generates the RPC configs and creates a per-service pool of
+`max_clients` Typed RPC clients. When `--rpc-library` is omitted,
+`HAKO_PDU_RPC_LIBRARY` is used. ROS callbacks bridge `TypedRpcClient.call_async()`
+completion into an `rclpy` Future and do not synchronously wait for RPC.
+
+The Docker native suite builds a Core-free Endpoint and PDU-RPC, then connects
+an AddTwoInts RPC Server to a Typed `call_async()` Client over real TCP using
+the generated configs:
+
+```bash
+bash test/docker/run_native_tests.sh
+```
+
+This validates both the Hakoniwa RPC baseline and an AddTwoInts E2E from a real
+ROS 2 Client through the Service Server Node.
+
 ## Verified Coverage
 
 The permanent test target is standard ROS messages first. If these pass, the

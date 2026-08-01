@@ -1,0 +1,14 @@
+{
+  "protocol": "tcp",
+  "name": "add_two_ints_rpc_server_tcp",
+  "direction": "inout",
+  "role": "server",
+  "local": {
+    "address": "0.0.0.0",
+    "port": 54010
+  },
+  "options": {
+    "read_timeout_ms": 1000,
+    "write_timeout_ms": 1000
+  }
+}

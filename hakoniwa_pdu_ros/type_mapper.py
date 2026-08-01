@@ -25,6 +25,20 @@ def import_ros_msg_class(type_name: str) -> type:
     return getattr(module, msg_name)
 
 
+def import_ros_service_class(type_name: str) -> type:
+    package_name, namespace, service_name = type_name.split("/", 2)
+    if namespace != "srv":
+        raise ValueError(f"ROS service type must use package/srv/Type form: {type_name}")
+    module = importlib.import_module(f"{package_name}.srv")
+    return getattr(module, service_name)
+
+
+def copy_matching_fields(src: object, dst: object) -> object:
+    """Copy a ROS/PDU body by field name and return the destination object."""
+    _copy_matching_fields(src, dst)
+    return dst
+
+
 def validate_pdu_converter(type_name: str) -> None:
     _load_converter(type_name)
 

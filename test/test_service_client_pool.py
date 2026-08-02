@@ -47,6 +47,27 @@ def test_pool_rejects_when_capacity_is_exhausted_and_reuses_release() -> None:
     assert all(client.closed for client in raw_clients)
 
 
+def test_serial_calls_keep_other_clients_available_for_concurrency() -> None:
+    pool = create_rpc_client_pool(
+        max_clients=3,
+        client_name=lambda index: f"client_{index}",
+        client_factory=lambda _name: (FakeClient(), object()),
+    )
+
+    first = pool.acquire()
+    assert first is not None
+    pool.release(first)
+    reused = pool.acquire()
+    second = pool.acquire()
+
+    assert reused is first
+    assert second is not None
+    assert second.name == "client_1"
+    pool.release(reused)
+    pool.release(second)
+    pool.close()
+
+
 def test_close_cancels_active_future_before_closing_clients() -> None:
     raw = FakeClient()
     pool = create_rpc_client_pool(

@@ -15,6 +15,7 @@ from add_two_ints_rpc_fixture import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BINDING = REPO_ROOT / "config" / "service" / "add_two_ints.json"
 ENDPOINT_CONFIG = REPO_ROOT / "config" / "service" / "rpc-endpoints.json"
+MUX_ENDPOINT_CONFIG = REPO_ROOT / "config" / "service" / "server-mux-endpoint.json"
 OFFSETS = REPO_ROOT / "test" / "fixtures" / "offset"
 
 
@@ -31,7 +32,7 @@ def test_generated_configs_support_typed_async_add_two_ints(
     with AddTwoIntsRpcServer(
         library_path,
         generated.server_config,
-        ENDPOINT_CONFIG,
+        MUX_ENDPOINT_CONFIG,
     ) as server:
         server.start()
         rpc_client, client = create_add_two_ints_client(

@@ -198,7 +198,8 @@ AddTwoIntsの例は次にあります。
 
 generatorはinstalled ROS `.srv`、`hakoniwa-pdu`のgenerated型、Hakoniwa offsetを解決し、
 同じresolved modelからRPC Server/Client用設定を生成します。これらの出力名はPDU-RPC側の
-役割を表すため、Bindingの`kind`とは別です。
+役割を表すため、Bindingの`kind`とは別です。解決したPDU package/typeはService Nodeにも
+そのまま渡されるため、Runtimeが既定packageだけを再探索することはありません。
 
 ```bash
 python3 -m hakoniwa_pdu_ros.generate_service_config \
@@ -234,7 +235,12 @@ service-server \
 
 `--rpc-library`省略時は`HAKO_PDU_RPC_LIBRARY`を使用します。ROS callbackは
 `TypedRpcClient.call_async()`の完了を`rclpy` Futureへ渡すため、同期RPC待ちでexecutorを
-ブロックしません。
+ブロックしません。起動ログにはROS service名・ROS型・Hakoniwa RPC service名・解決済みPDU型・
+自動生成client名の範囲・timeoutが表示されます。
+
+`timeout_msec`はBridge側の期限でもあります。期限到達時はPDU-RPCの通常cancel経路を使い、
+その後に正常応答が競合して到着してもROS成功応答へ変換しません。RPCがterminal stateへ
+到達してからclientをpoolへ戻すため、late responseが次の要求へ混入しません。
 
 Docker native testでは、Core不要のEndpointとPDU-RPCをビルドし、生成設定を使って
 AddTwoInts RPC ServerとTyped `call_async()` Clientを実TCP接続します。
@@ -244,7 +250,15 @@ bash test/docker/run_native_tests.sh
 ```
 
 このテストにはHakoniwa RPC基準環境に加え、実際のROS 2 ClientからService Server Nodeを経由する
-AddTwoInts E2Eも含まれます。
+AddTwoIntsの正常応答、連続呼び出し、4件の並列呼び出しと5件目の`BUSY`拒否、timeout後の
+late response破棄とclient再利用のE2Eも含まれます。RPC Server側は複数の独立接続を受ける
+Python `RpcMuxServer`と`tcp_mux` transportを使用します。要求処理中のshutdownについても、
+RPC cancel、terminal cleanup、pool close、ROS応答を合成しないことまで確認します。
+request/response変換エラーについても、変換方向とservice識別情報をログに出し、client leaseを
+解放し、ROS応答を合成せず、Service Nodeが継続することを確認します。
+
+RPC Server、Service Bridge、`ros2 service call`を三つのターミナルで個別に起動して観測するには、
+[ROS Service手動デモ](examples/service/README.ja.md)を参照してください。
 
 ## Verified Coverage
 

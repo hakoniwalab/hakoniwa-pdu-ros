@@ -36,6 +36,7 @@ class GeneratedServiceConfigs:
     output_dir: Path
     server_config: Path
     client_config: Path
+    services: tuple[ResolvedService, ...]
 
 
 def generate_service_configs(
@@ -51,7 +52,7 @@ def generate_service_configs(
     resolve_ros = ros_interface_resolver or resolve_installed_ros_service
     resolve_pdu = pdu_type_resolver or resolve_installed_pdu_service_type
 
-    resolved = []
+    resolved: list[ResolvedService] = []
     for binding in config.bindings:
         resolve_ros(binding.ros_type)
         pdu_type = resolve_pdu(binding.ros_type, binding.pdu_service_type)
@@ -81,6 +82,7 @@ def generate_service_configs(
         output_dir=target_dir,
         server_config=server_path,
         client_config=client_path,
+        services=tuple(resolved),
     )
 
 
@@ -198,11 +200,15 @@ def _build_role_config(
                 "maxClients": binding.max_clients,
                 "pduSize": {
                     "server": {
-                        "heapSize": binding.heap.request_bytes,
+                        # Native PDU-RPC pairs the server-side heap field with
+                        # the response packet (client base size).
+                        "heapSize": binding.heap.response_bytes,
                         "baseSize": resolved.request_base_size,
                     },
                     "client": {
-                        "heapSize": binding.heap.response_bytes,
+                        # Native PDU-RPC pairs the client-side heap field with
+                        # the request packet (server base size).
+                        "heapSize": binding.heap.request_bytes,
                         "baseSize": resolved.response_base_size,
                     },
                 },

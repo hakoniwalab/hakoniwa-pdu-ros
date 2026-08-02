@@ -49,7 +49,7 @@ The container runs two groups of tests:
    - generates matching server/client RPC configs with deterministic client names and channels
 
 4. Native AddTwoInts RPC baseline
-   - starts the reusable test RPC server over the real TCP Endpoint transport
+   - starts the reusable test RPC server over the real `tcp_mux` Endpoint transport
    - creates a Typed RPC client from the generated client config
    - calls `TypedRpcClient.call_async()` with `19 + 23`
    - verifies the server received the typed request and the client received `42`
@@ -62,6 +62,22 @@ Hakoniwa RPC baseline that the ROS Service Server Node tests will reuse next.
    - starts `HakoniwaRosServiceServerNode` with four Typed RPC clients
    - calls `/add_two_ints` from a real `rclpy` Service Client
    - verifies the ROS request reaches RPC and the ROS response contains `42`
+   - verifies two consecutive calls reuse a connected RPC client
+   - verifies four parallel calls complete through four independent RPC clients
+   - verifies a fifth request is rejected as `BUSY` while all clients are occupied
+   - verifies a normal response arriving after the Bridge timeout is discarded
+   - verifies the RPC client is reusable after terminal timeout cleanup
+   - verifies shutdown during an active call sends protocol cancellation, waits
+     for terminal cleanup, closes the pool, and synthesizes no ROS response
+   - injects request and response conversion failures, verifies directional
+     diagnostics, no synthesized response, lease release, and a later successful call
+
+For the equivalent user-observable three-process walkthrough, see
+[`examples/service/README.md`](../../examples/service/README.md).
+
+The fast unit suite covers the pool's `max_clients` capacity and `BUSY`
+behavior. The native E2E uses the pinned PDU-RPC Python `RpcMuxServer` to cover
+the same behavior with real parallel TCP connections.
 
 The Endpoint and RPC source revisions are pinned by Docker build arguments in
 `Dockerfile`. Update those arguments intentionally when adopting a newer

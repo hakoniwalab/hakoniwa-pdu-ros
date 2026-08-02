@@ -57,7 +57,9 @@ class RpcClientPool:
             self._leased.remove(lease.name)
             lease.future = None
             if not self._closed:
-                self._available.append(lease)
+                # Prefer the already-connected client for the next serial call.
+                # Other clients remain available for actual concurrency.
+                self._available.appendleft(lease)
 
     def close(self, timeout_sec: float = 5.0) -> None:
         with self._lock:

@@ -46,6 +46,8 @@ def test_generate_add_two_ints_server_and_client_configs(tmp_path: Path) -> None
     )
 
     assert resolved_ros_types == ["example_interfaces/srv/AddTwoInts"]
+    assert len(generated.services) == 1
+    assert generated.services[0].pdu_service_type == "hako_srv_msgs/AddTwoInts"
     assert _load(generated.server_config) == _load(
         FIXTURES / "add_two_ints-rpc-server-services.json"
     )
@@ -114,8 +116,10 @@ def test_heap_mapping_and_channel_ids_are_scoped_per_service(tmp_path: Path) -> 
     )
     services = _load(generated.server_config)["services"]
 
-    assert services[0]["pduSize"]["server"]["heapSize"] == 64
-    assert services[0]["pduSize"]["client"]["heapSize"] == 128
+    # The user-facing schema is request/response-oriented. The generator is
+    # the adapter to PDU-RPC's native server/client heap field semantics.
+    assert services[0]["pduSize"]["client"]["heapSize"] == 64
+    assert services[0]["pduSize"]["server"]["heapSize"] == 128
     assert [
         (
             service["clients"][0]["requestChannelId"],

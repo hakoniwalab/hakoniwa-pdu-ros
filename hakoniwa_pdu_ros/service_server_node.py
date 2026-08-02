@@ -22,7 +22,11 @@ from hakoniwa_pdu_ros.service_client_pool import (
     RpcClientPool,
     create_rpc_client_pool,
 )
-from hakoniwa_pdu_ros.service_config_generator import generate_service_configs
+from hakoniwa_pdu_ros.service_call_lifecycle import BridgeCallLifecycle
+from hakoniwa_pdu_ros.service_config_generator import (
+    ResolvedService,
+    generate_service_configs,
+)
 from hakoniwa_pdu_ros.type_mapper import copy_matching_fields, import_ros_service_class
 
 
@@ -34,6 +38,7 @@ class HakoniwaRosServiceServerNode(Node):
         config: ServiceBindingConfig,
         rpc_service_config: str | Path,
         rpc_library: str | Path,
+        resolved_services: tuple[ResolvedService, ...],
     ) -> None:
         super().__init__("hakoniwa_pdu_ros_service_server")
         self._config = config
@@ -44,9 +49,18 @@ class HakoniwaRosServiceServerNode(Node):
         self._services: list[Any] = []
         self._closed = False
 
+        resolved_by_service = {
+            service.binding.hakoniwa_service: service
+            for service in resolved_services
+        }
+        expected_services = {binding.hakoniwa_service for binding in config.bindings}
+        if set(resolved_by_service) != expected_services:
+            raise ValueError("Resolved services do not match the Service Binding")
+
         try:
             for binding in config.bindings:
-                pool = self._create_pool(binding)
+                resolved = resolved_by_service[binding.hakoniwa_service]
+                pool = self._create_pool(binding, resolved.pdu_service_type)
                 self._pools[binding.hakoniwa_service] = pool
                 service_class = import_ros_service_class(binding.ros_type)
                 service = self.create_service(
@@ -57,21 +71,24 @@ class HakoniwaRosServiceServerNode(Node):
                 )
                 self._services.append(service)
                 self.get_logger().info(
-                    f"service ready: ros={binding.ros_name} "
-                    f"rpc={binding.hakoniwa_service} max_clients={binding.max_clients}"
+                    f"service ready: ros_name={binding.ros_name} "
+                    f"ros_type={binding.ros_type} "
+                    f"rpc_service={binding.hakoniwa_service} "
+                    f"pdu_type={resolved.pdu_service_type} "
+                    f"clients={_client_range(binding)} "
+                    f"timeout_msec={binding.timeout_msec}"
                 )
         except BaseException:
             self._close_runtime()
             raise
 
-    def _create_pool(self, binding: ServiceBinding) -> RpcClientPool:
+    def _create_pool(
+        self, binding: ServiceBinding, pdu_service_type: str
+    ) -> RpcClientPool:
         from hakoniwa_pdu_rpc import RpcClient, make_typed_client
 
-        service_type = binding.ros_type.rsplit("/", 1)[-1]
-        package = None
-        if binding.pdu_service_type is not None:
-            package_name, service_type = binding.pdu_service_type.split("/", 1)
-            package = f"hakoniwa_pdu.pdu_msgs.{package_name}"
+        package_name, service_type = pdu_service_type.split("/", 1)
+        package = f"hakoniwa_pdu.pdu_msgs.{package_name}"
 
         def client_factory(name: str):
             rpc_client = RpcClient(
@@ -108,11 +125,18 @@ class HakoniwaRosServiceServerNode(Node):
                     f"rpc_service={binding.hakoniwa_service} "
                     f"active_clients={pool.active_count} max_clients={pool.capacity}"
                 )
-                raise RuntimeError(f"RPC client pool is busy: {binding.hakoniwa_service}")
+                raise ServiceCallRejected(
+                    f"RPC client pool is busy: {binding.hakoniwa_service}"
+                )
 
             try:
                 rpc_request = lease.typed_client.create_request()
-                copy_matching_fields(request, rpc_request)
+                _copy_service_fields(
+                    request,
+                    rpc_request,
+                    direction="request",
+                    binding=binding,
+                )
                 rpc_future = lease.typed_client.call_async(
                     rpc_request,
                     timeout_usec=binding.timeout_msec * 1000,
@@ -121,22 +145,29 @@ class HakoniwaRosServiceServerNode(Node):
 
                 completion = RclpyFuture(executor=self.executor)
 
-                def complete(future) -> None:
-                    try:
-                        completion.set_result(future.result())
-                    except BaseException as error:
-                        completion.set_exception(error)
-
-                rpc_future.add_done_callback(complete)
+                BridgeCallLifecycle(
+                    rpc_future,
+                    timeout_msec=binding.timeout_msec,
+                    on_result=completion.set_result,
+                    on_error=completion.set_exception,
+                )
                 rpc_response = await completion
-                copy_matching_fields(rpc_response, response)
+                _copy_service_fields(
+                    rpc_response,
+                    response,
+                    direction="response",
+                    binding=binding,
+                )
                 return response
+            except ServiceConversionError as error:
+                self.get_logger().error(str(error))
+                raise ServiceCallRejected(str(error)) from error
             except BaseException as error:
                 self.get_logger().error(
                     f"service call failed: ros={binding.ros_name} "
                     f"rpc={binding.hakoniwa_service} error={error}"
                 )
-                raise
+                raise ServiceCallRejected(str(error)) from error
             finally:
                 pool.release(lease)
 
@@ -181,10 +212,15 @@ def run(
     node: HakoniwaRosServiceServerNode | None = None
     executor: MultiThreadedExecutor | None = None
     try:
-        node = HakoniwaRosServiceServerNode(config, generated.client_config, library)
+        node = HakoniwaRosServiceServerNode(
+            config,
+            generated.client_config,
+            library,
+            generated.services,
+        )
         executor = MultiThreadedExecutor()
         executor.add_node(node)
-        executor.spin()
+        _spin_service_executor(executor)
     finally:
         if executor is not None and node is not None:
             executor.remove_node(node)
@@ -214,3 +250,65 @@ def main() -> None:
         )
     except ValueError as error:
         parser.error(str(error))
+
+
+def _client_range(binding: ServiceBinding) -> str:
+    key = service_key(binding.hakoniwa_service)
+    first = f"hakoniwa_pdu_ros_{key}_0"
+    if binding.max_clients == 1:
+        return first
+    return f"{first}..hakoniwa_pdu_ros_{key}_{binding.max_clients - 1}"
+
+
+class ServiceCallRejected(RuntimeError):
+    """One ROS request intentionally receives no synthesized response."""
+
+
+class ServiceConversionError(RuntimeError):
+    """Request or response conversion failed at the ROS/RPC boundary."""
+
+    def __init__(
+        self,
+        *,
+        direction: str,
+        binding: ServiceBinding,
+        cause: BaseException,
+    ) -> None:
+        self.direction = direction
+        self.ros_service = binding.ros_name
+        self.rpc_service = binding.hakoniwa_service
+        self.cause = cause
+        super().__init__(
+            "service conversion failed: "
+            f"direction={direction} "
+            f"ros_service={binding.ros_name} "
+            f"rpc_service={binding.hakoniwa_service} "
+            f"error={cause}"
+        )
+
+
+def _copy_service_fields(
+    source: object,
+    target: object,
+    *,
+    direction: str,
+    binding: ServiceBinding,
+) -> None:
+    try:
+        copy_matching_fields(source, target)
+    except BaseException as error:
+        raise ServiceConversionError(
+            direction=direction,
+            binding=binding,
+            cause=error,
+        ) from error
+
+
+def _spin_service_executor(executor: MultiThreadedExecutor) -> None:
+    """Keep the bridge alive when an individual Service call is rejected."""
+    while rclpy.ok():
+        try:
+            executor.spin()
+            return
+        except ServiceCallRejected:
+            continue

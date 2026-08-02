@@ -49,7 +49,9 @@ setup(
                 "config/service/rpc-pdudef.json",
                 "config/service/rpc-queue.json",
                 "config/service/rpc-server-comm.json",
+                "config/service/rpc-server-mux-comm.json",
                 "config/service/server-endpoint.json",
+                "config/service/server-mux-endpoint.json",
             ],
         ),
         (
@@ -59,6 +61,14 @@ setup(
                 "examples/zenoh_peer.py",
                 "examples/ros_pos_subscriber.py",
                 "examples/ros_cmd_publisher.py",
+            ],
+        ),
+        (
+            f"share/{package_name}/examples/service",
+            [
+                "examples/service/README.md",
+                "examples/service/README.ja.md",
+                "examples/service/add_two_ints_rpc_server.py",
             ],
         ),
         (f"share/{package_name}/examples/zenoh", ["examples/zenoh/README.md"]),

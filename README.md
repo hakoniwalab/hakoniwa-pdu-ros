@@ -209,7 +209,9 @@ The canonical Service Binding schema and AddTwoInts example are located at:
 The generator resolves an installed ROS `.srv`, generated types from
 `hakoniwa-pdu`, and Hakoniwa offset files. It then emits RPC Server and Client
 configs from one resolved model. Those output names describe PDU-RPC roles and
-are independent of the Binding `kind`.
+are independent of the Binding `kind`. The resolved PDU package/type is also
+passed directly to the Service Node; runtime does not fall back to searching
+only a default package.
 
 ```bash
 python3 -m hakoniwa_pdu_ros.generate_service_config \
@@ -245,7 +247,14 @@ service-server \
 At startup it generates the RPC configs and creates a per-service pool of
 `max_clients` Typed RPC clients. When `--rpc-library` is omitted,
 `HAKO_PDU_RPC_LIBRARY` is used. ROS callbacks bridge `TypedRpcClient.call_async()`
-completion into an `rclpy` Future and do not synchronously wait for RPC.
+completion into an `rclpy` Future and do not synchronously wait for RPC. The
+startup diagnostic reports the ROS name/type, Hakoniwa RPC service, resolved
+PDU type, generated client-name range, and timeout.
+
+`timeout_msec` is also the Bridge-owned deadline. Expiration uses the normal
+PDU-RPC cancellation path. A normal result that races in after that deadline is
+not converted into a successful ROS response, and the client returns to the
+pool only after its RPC lifecycle reaches a terminal state.
 
 The Docker native suite builds a Core-free Endpoint and PDU-RPC, then connects
 an AddTwoInts RPC Server to a Typed `call_async()` Client over real TCP using
@@ -255,8 +264,19 @@ the generated configs:
 bash test/docker/run_native_tests.sh
 ```
 
-This validates both the Hakoniwa RPC baseline and an AddTwoInts E2E from a real
-ROS 2 Client through the Service Server Node.
+This validates the Hakoniwa RPC baseline plus real-ROS AddTwoInts E2E coverage
+for a normal response, consecutive calls, four parallel calls and fifth-call
+`BUSY` rejection, late-result rejection after timeout, and client reuse. The
+RPC Server uses the Python `RpcMuxServer` and `tcp_mux` transport to accept the
+independent client connections. Shutdown during an active call is also covered
+through protocol cancellation, terminal cleanup, pool close, and the absence
+of a synthesized ROS response. Request/response conversion failures are logged
+with their direction and service identity, release the client lease, synthesize
+no ROS response, and do not stop the Service Node.
+
+For an observable three-terminal walkthrough that starts the RPC Server,
+Service Bridge, and `ros2 service call` separately, see the
+[manual ROS Service demo](examples/service/README.md).
 
 ## Verified Coverage
 

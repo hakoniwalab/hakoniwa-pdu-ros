@@ -190,10 +190,14 @@ The optional Binding heap uses semantic directions:
 Both values default to zero and must be non-negative integers. Capacity
 overflow must fail explicitly and must not truncate data.
 
-The generator maps request heap to native `pduSize.server.heapSize` and response
-heap to `pduSize.client.heapSize`. Runtime validation for different non-zero
-values remains dependent on the canonical PDU-RPC/PDU-Python heap contract
-tracked in `hakoniwa-pdu-rpc#39`.
+The PDU-RPC runtime interprets request capacity as
+`pduSize.client.heapSize` and response capacity as
+`pduSize.server.heapSize`. The generator is the adapter that keeps this native
+naming out of the user contract: it maps `request_bytes` to `client.heapSize`
+and `response_bytes` to `server.heapSize`. The naming mismatch with the generic
+PDU-Python service PDU-definition builder remains tracked in
+`hakoniwa-pdu-rpc#39`, but configs generated and passed directly to the
+PDU-RPC runtime use this mapping as their fixed contract.
 
 ## Verification
 
@@ -208,11 +212,22 @@ types, then exercises both the Python API and CLI generation paths.
 It also builds a Core-free Endpoint and a PDU-RPC revision with Typed
 `call_async()` support. A ROS-independent AddTwoInts RPC fixture uses the
 generated RPC server/client configs over real TCP and verifies the complete
-`19 + 23 = 42` request/response round trip. The later Service Node E2E reuses
-this RPC server and replaces the current Typed RPC client call with the ROS
-Service Server Node.
+`19 + 23 = 42` request/response round trip. The Service Node E2E reuses the
+same RPC server.
 
-The normal Service Server Node E2E is implemented on this fixture. A real ROS 2
-Client calls `/add_two_ints` and receives `42` through the Node, Typed RPC, and
-Hakoniwa RPC Server. Concurrency, BUSY, timeout, and shutdown race coverage
-remain follow-up work.
+The Service Server Node E2E is implemented on this fixture. A real ROS 2 Client
+exercises a normal response, two consecutive calls, four parallel calls, a
+fifth-call `BUSY` rejection, late-normal-result rejection after timeout, and
+reuse of the same client through the Node, Typed RPC, and Hakoniwa RPC Server.
+It also verifies that shutdown during an active call uses protocol
+cancellation, waits for terminal cleanup, closes the pool, and synthesizes no
+ROS response.
+
+ROS-independent unit tests cover pool capacity, `BUSY`, reuse after release,
+and cancellation/close during shutdown. An RPC Server transport accepting
+multiple independent `RpcClient` connections must use `tcp_mux`, not a normal
+single-connection TCP server. The pinned PDU-RPC Python `RpcMuxServer` hides
+the accept lifecycle and creates an RPC Server adapter for each accepted
+connection. The Docker E2E uses this API to verify real-TCP concurrency up to
+`max_clients=4` and structured `BUSY` rejection without synthesizing a ROS
+response when capacity is exceeded.

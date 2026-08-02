@@ -172,9 +172,11 @@ Bindingの任意heapは意味方向で記述する。
 
 既定値は両方0で、0以上の整数とする。容量超過は明示的に失敗させ、切り詰めない。
 
-generatorはrequestをnative `pduSize.server.heapSize`、responseを
-`pduSize.client.heapSize`へ写す。異なる非ゼロ値のruntime検証は、
-`hakoniwa-pdu-rpc#39`で管理するPDU-RPC/PDU-Pythonの正規heap契約確定後に行う。
+PDU-RPC runtimeはrequest容量を`pduSize.client.heapSize`、response容量を
+`pduSize.server.heapSize`として解釈する。generatorはこのnative namingを利用者へ露出させず、
+`request_bytes`を`client.heapSize`、`response_bytes`を`server.heapSize`へ変換するAdapterとする。
+PDU-Pythonの汎用service PDU definition builderとの命名不整合は`hakoniwa-pdu-rpc#39`で管理するが、
+本Bridgeが生成してPDU-RPC runtimeへ直接渡す設定の方向はこの契約で固定する。
 
 ## 検証
 
@@ -186,10 +188,18 @@ PyPI `hakoniwa-pdu`のgenerated型を解決し、Python APIとCLIの両経路を
 
 さらに、Core不要のEndpointとTyped `call_async()`対応PDU-RPCをDocker内でビルドし、
 生成したRPC Server/Client設定を使うAddTwoInts RPC fixtureを実TCPで検証する。このfixtureは
-ROS非依存であり、`19 + 23 = 42`のrequest/response往復を確認する。次段階のService Node E2Eでは、
-このRPC Serverをそのまま利用し、現在のTyped RPC Client呼び出し部分をROS Service Server
-Nodeへ置き換える。
+ROS非依存であり、`19 + 23 = 42`のrequest/response往復を確認する。Service Node E2Eも同じ
+RPC Serverを利用する。
 
-Service Server Nodeの正常系E2Eは、このfixture上で実装済みである。実際のROS 2 Clientから
-`/add_two_ints`を呼び、Node、Typed RPC、箱庭RPC Serverを経由して`42`が返ることを確認する。
-並列要求、BUSY、timeout、shutdownの異常系・競合系coverageは後続で追加する。
+Service Server NodeのE2Eは、このfixture上で実装済みである。実際のROS 2 Clientから
+`/add_two_ints`を呼び、Node、Typed RPC、箱庭RPC Serverを経由する正常応答、2回の連続呼び出し、
+4件の並列要求、5件目の`BUSY`拒否、timeout後のlate normal response破棄、同じclientの再利用を
+確認する。さらに、要求処理中のshutdownが通常のRPC cancelを送り、terminal cleanupを待って
+poolを閉じ、ROS応答を合成しないことを確認する。
+
+client poolの容量上限、`BUSY`、release後の再利用、shutdown時cancel/closeはROS非依存unit testで
+確認する。複数の独立した`RpcClient`接続を受けるRPC Server transportには、通常の単一接続TCP
+serverではなく`tcp_mux`を使う。pinned PDU-RPCのPython `RpcMuxServer`がaccept lifecycleと、
+受理した各接続に対するRPC Server adapterを隠蔽する。Docker E2EではこのAPIにより、
+`max_clients=4`までの実TCP並列処理と、容量超過時にROS clientへ応答を合成せず構造化`BUSY`ログを
+出すことを確認する。

@@ -16,3 +16,7 @@ def main() -> None:
     except ZenohIoValidationError as err:
         print(err, file=sys.stderr)
         raise SystemExit(1) from None
+
+
+if __name__ == "__main__":
+    main()

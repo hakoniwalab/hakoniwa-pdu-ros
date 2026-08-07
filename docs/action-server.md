@@ -36,52 +36,56 @@ The bridge owns only ROS/Hakoniwa adaptation:
 
 - load the configured ROS Action type;
 - map ROS Goal fields into the generated Hakoniwa Action request body;
+- preserve the ROS Goal UUID as the Hakoniwa `goal_id`;
 - map Hakoniwa Goal acceptance/rejection to ROS Goal acceptance/rejection;
 - publish Hakoniwa Feedback as ROS Feedback;
 - forward ROS Cancel to Hakoniwa Cancel;
-- map Hakoniwa terminal status and Result into ROS terminal state and Result;
-- associate the ROS Goal UUID with the bridge-created Hakoniwa Goal ID while the Goal is active.
+- map Hakoniwa terminal status and Result into ROS terminal state and Result.
 
 The bridge does not reimplement the Hakoniwa Action state machine. Goal ownership, slot capacity, Cancel/Result races, feedback sequencing, and terminal-state validation remain in `hakoniwa-pdu-rpc`.
 
-## Goal acceptance
+## Goal acceptance and identity
 
-The ROS Goal callback does not receive a ROS Goal UUID through its public callback argument; the accepted `ServerGoalHandle` exposes the UUID later. The bridge therefore creates its own non-zero 128-bit Hakoniwa Goal ID for the Hakoniwa Goal handshake.
+The existing Action PDU design requires the ROS Goal UUID to pass through unchanged as the Hakoniwa 128-bit `goal_id`.
+
+```text
+ROS Goal UUID == Hakoniwa goal_id
+```
+
+This keeps one execution identity across the ROS and Hakoniwa boundaries. Feedback, Cancel, and Result therefore use the same Goal identity that originated at the ROS Action Client.
+
+The public Jazzy `rclpy.ActionServer` goal callback receives only the user-defined Goal payload. Internally, however, `ActionServer._execute_goal_request()` has already taken the full SendGoal request and obtained `goal_request.goal_id` before invoking that callback.
+
+To preserve the identity contract without reimplementing the ROS Action lifecycle, `hakoniwa-pdu-ros` uses a narrow `ActionServer` subclass. The override captures the ROS Goal UUID in a context-local value and immediately delegates the complete request processing to the upstream rclpy implementation. The bridge goal callback reads that UUID and sends the Hakoniwa Goal with the exact same 16 bytes.
 
 The acceptance sequence is:
 
 ```text
-ROS Goal request
+ROS SendGoal request
+    -> capture ROS Goal UUID
     -> encode Hakoniwa Goal PDU
-    -> create Hakoniwa Goal ID
-    -> send Hakoniwa Goal
+    -> send Hakoniwa Goal with the same 128-bit goal_id
     -> wait for Hakoniwa GOAL_RESPONSE
 
 Hakoniwa ACCEPTED
     -> return ROS GoalResponse.ACCEPT
-    -> associate ROS Goal UUID with Hakoniwa Goal session
-    -> execute ROS Goal
+    -> execute the ROS Goal
 
 Hakoniwa REJECTED / timeout / transport error
     -> return ROS GoalResponse.REJECT
 ```
 
-This preserves the distinction between Goal rejection and execution abort. The bridge does not accept a ROS Goal first and later translate a Hakoniwa rejection into `ABORTED`.
+This preserves both important contracts:
 
-## Goal identity
+1. ROS Goal rejection remains rejection, not a later `ABORTED` result.
+2. ROS Goal UUID and Hakoniwa `goal_id` remain identical end to end.
 
-ROS and Hakoniwa Goal IDs are both 128 bit, but they are separate identities in this bridge implementation.
-
-```text
-ROS Goal UUID <-> bridge session <-> Hakoniwa Goal ID
-```
-
-The mapping exists only while the Goal is active and is released after the terminal Result.
+The rclpy hook is intentionally limited to exposing information that rclpy already holds before the user callback. Goal tracking, response transmission, status publication, cancellation processing, result handling, and goal expiration remain owned by the upstream `ActionServer` implementation.
 
 ## Event polling
 
 One background pump is the sole caller of `hakoniwa_pdu_rpc.ActionClient.poll()`.
-It dispatches events to Goal-local inboxes by Hakoniwa Goal ID.
+It dispatches events to Goal-local inboxes by Goal ID.
 
 Goal-local inboxes support event-type matching without removing unrelated events. This matters because the ROS execute callback and Cancel callback can wait concurrently:
 

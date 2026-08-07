@@ -54,12 +54,6 @@ RUN mkdir -p /opt/src/hakoniwa-pdu-rpc \
         --endpoint-root /opt/hakoniwa-pdu-endpoint \
         --install-dir /opt/hakoniwa-pdu-rpc
 
-WORKDIR /workspace
-COPY . /workspace
-
-RUN /opt/hakoniwa-pdu-ros-venv/bin/python -m pip install -e /workspace \
-    && /opt/hakoniwa-pdu-ros-venv/bin/python -c "import hakoniwa_pdu_ros; import hakoniwa_pdu_rpc; assert hasattr(hakoniwa_pdu_rpc, 'ActionClient')"
-
 ENV PATH=/opt/hakoniwa-pdu-ros-venv/bin:${PATH} \
     HAKO_PDU_RPC_LIBRARY=/opt/hakoniwa-pdu-rpc/lib/libhakoniwa_pdu_rpc.so \
     LD_LIBRARY_PATH=/opt/hakoniwa-pdu-rpc/lib:/opt/hakoniwa-pdu-endpoint/lib \
@@ -67,5 +61,11 @@ ENV PATH=/opt/hakoniwa-pdu-ros-venv/bin:${PATH} \
     RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     ROS_DOMAIN_ID=73 \
     PYTHONUNBUFFERED=1
+
+WORKDIR /workspace
+COPY . /workspace
+
+RUN /opt/hakoniwa-pdu-ros-venv/bin/python -m pip install -e /workspace \
+    && /opt/hakoniwa-pdu-ros-venv/bin/python -c "import hakoniwa_pdu_ros; import hakoniwa_pdu_rpc; assert hasattr(hakoniwa_pdu_rpc, 'ActionClient')"
 
 CMD ["bash", "-lc", "source /opt/ros/jazzy/setup.bash && /opt/hakoniwa-pdu-ros-venv/bin/python -m pytest -q test --ignore=test/native && exec /opt/hakoniwa-pdu-ros-venv/bin/python -m pytest -q -s test/native"]

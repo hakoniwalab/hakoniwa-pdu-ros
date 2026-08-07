@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import contextvars
 import importlib
 import os
 import threading
-import uuid
-from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -27,6 +26,31 @@ from hakoniwa_pdu_ros.action_client_runtime import (
 )
 from hakoniwa_pdu_ros.action_wire import ActionWire, load_action_wire
 from hakoniwa_pdu_ros.env_setup import configure_import_paths
+
+
+_CURRENT_ROS_GOAL_ID: contextvars.ContextVar[bytes | None] = contextvars.ContextVar(
+    "hakoniwa_pdu_ros_goal_id", default=None
+)
+
+
+class _GoalIdAwareActionServer(ActionServer):
+    """Expose the ROS Goal UUID to the public goal callback without changing rclpy.
+
+    Jazzy's ActionServer has already taken the SendGoal request, including
+    ``goal_id``, before it invokes the user goal callback.  The public callback
+    intentionally receives only the user Goal payload.  This narrow override
+    preserves that UUID in a ContextVar while delegating the complete lifecycle
+    to the upstream implementation.
+    """
+
+    async def _execute_goal_request(self, request_header_and_message):
+        _, send_goal_request = request_header_and_message
+        ros_goal_id = bytes(send_goal_request.goal_id.uuid)
+        token = _CURRENT_ROS_GOAL_ID.set(ros_goal_id)
+        try:
+            return await super()._execute_goal_request(request_header_and_message)
+        finally:
+            _CURRENT_ROS_GOAL_ID.reset(token)
 
 
 @dataclass(frozen=True)
@@ -58,16 +82,13 @@ class HakoniwaRosActionServerNode(Node):
         self._runtime.start()
         self._servers: list[ActionServer] = []
         self._lock = threading.Lock()
-        self._pending: dict[str, deque[ActionGoalSession]] = {
-            binding.ros_name: deque() for binding in config.actions
-        }
         self._sessions: dict[bytes, ActionGoalSession] = {}
         self._closed = False
 
         try:
             for binding in config.actions:
                 resolved = _resolve_action(binding)
-                server = ActionServer(
+                server = _GoalIdAwareActionServer(
                     self,
                     resolved.ros_action_type,
                     binding.ros_name,
@@ -98,7 +119,13 @@ class HakoniwaRosActionServerNode(Node):
                 )
                 return GoalResponse.REJECT
 
-            hako_goal_id = uuid.uuid4().bytes
+            ros_goal_id = _CURRENT_ROS_GOAL_ID.get()
+            if ros_goal_id is None or len(ros_goal_id) != 16 or not any(ros_goal_id):
+                self.get_logger().error(
+                    f"ROS Goal UUID is unavailable or invalid: {binding.ros_name}"
+                )
+                return GoalResponse.REJECT
+
             try:
                 template = self._native_client.create_goal_buffer(
                     binding.hakoniwa_action
@@ -107,7 +134,7 @@ class HakoniwaRosActionServerNode(Node):
                 session, response = self._runtime.submit_goal(
                     binding.hakoniwa_action,
                     pdu,
-                    hako_goal_id,
+                    ros_goal_id,
                     timeout_usec=binding.goal_response_timeout_msec * 1000,
                 )
             except BaseException as error:
@@ -119,7 +146,7 @@ class HakoniwaRosActionServerNode(Node):
 
             decision = getattr(response, "decision", None)
             if getattr(decision, "name", None) != "ACCEPTED":
-                self._runtime.release(hako_goal_id)
+                self._runtime.release(ros_goal_id)
                 self.get_logger().info(
                     f"goal rejected: ros={binding.ros_name} "
                     f"hakoniwa={binding.hakoniwa_action}"
@@ -127,11 +154,11 @@ class HakoniwaRosActionServerNode(Node):
                 return GoalResponse.REJECT
 
             with self._lock:
-                self._pending[binding.ros_name].append(session)
+                self._sessions[ros_goal_id] = session
             self.get_logger().info(
                 f"goal accepted: ros={binding.ros_name} "
                 f"hakoniwa={binding.hakoniwa_action} "
-                f"hako_goal_id={hako_goal_id.hex()}"
+                f"goal_id={ros_goal_id.hex()}"
             )
             return GoalResponse.ACCEPT
 
@@ -143,15 +170,13 @@ class HakoniwaRosActionServerNode(Node):
         def handle_accepted(goal_handle: object) -> None:
             ros_goal_id = _ros_goal_id_bytes(goal_handle)
             with self._lock:
-                pending = self._pending[binding.ros_name]
-                if not pending:
-                    self.get_logger().error(
-                        f"accepted ROS Goal has no Hakoniwa session: {binding.ros_name}"
-                    )
-                    goal_handle.abort()
-                    return
-                session = pending.popleft()
-                self._sessions[ros_goal_id] = session
+                session = self._sessions.get(ros_goal_id)
+            if session is None:
+                self.get_logger().error(
+                    f"accepted ROS Goal has no Hakoniwa session: {binding.ros_name}"
+                )
+                goal_handle.abort()
+                return
             goal_handle.execute()
 
         return handle_accepted
@@ -218,7 +243,7 @@ class HakoniwaRosActionServerNode(Node):
                         return result
 
                     self.get_logger().error(
-                        f"Action runtime terminated without Result: "
+                        "Action runtime terminated without Result: "
                         f"ros={binding.ros_name} event={event.event.name}"
                     )
                     goal_handle.abort()
@@ -251,8 +276,6 @@ class HakoniwaRosActionServerNode(Node):
         self._runtime.close()
         with self._lock:
             self._sessions.clear()
-            for pending in self._pending.values():
-                pending.clear()
 
 
 def _resolve_action(binding: ActionBinding) -> _ResolvedAction:

@@ -1,7 +1,7 @@
 FROM ros:jazzy-ros-base-noble
 
 ARG HAKONIWA_PDU_ENDPOINT_REF=f2d7bc052f9afb93281477507206cc35bf284a62
-ARG HAKONIWA_PDU_RPC_REF=10eb9c8e7664691816796427b2cff68b61c13433
+ARG HAKONIWA_PDU_RPC_REF=3085b01b7458538f7228ed875aa12944b0583213
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -58,7 +58,7 @@ WORKDIR /workspace
 COPY . /workspace
 
 RUN /opt/hakoniwa-pdu-ros-venv/bin/python -m pip install -e /workspace \
-    && /opt/hakoniwa-pdu-ros-venv/bin/python -c "import hakoniwa_pdu_ros; print(hakoniwa_pdu_ros.__file__)"
+    && /opt/hakoniwa-pdu-ros-venv/bin/python -c "import hakoniwa_pdu_ros; import hakoniwa_pdu_rpc; assert hasattr(hakoniwa_pdu_rpc, 'ActionClient')"
 
 ENV PATH=/opt/hakoniwa-pdu-ros-venv/bin:${PATH} \
     HAKO_PDU_RPC_LIBRARY=/opt/hakoniwa-pdu-rpc/lib/libhakoniwa_pdu_rpc.so \
@@ -68,4 +68,4 @@ ENV PATH=/opt/hakoniwa-pdu-ros-venv/bin:${PATH} \
     ROS_DOMAIN_ID=73 \
     PYTHONUNBUFFERED=1
 
-CMD ["bash", "-lc", "source /opt/ros/jazzy/setup.bash && exec /opt/hakoniwa-pdu-ros-venv/bin/python -m pytest -q -s test/native"]
+CMD ["bash", "-lc", "source /opt/ros/jazzy/setup.bash && /opt/hakoniwa-pdu-ros-venv/bin/python -m pytest -q test --ignore=test/native && exec /opt/hakoniwa-pdu-ros-venv/bin/python -m pytest -q -s test/native"]

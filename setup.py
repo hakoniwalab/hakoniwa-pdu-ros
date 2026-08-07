@@ -38,7 +38,13 @@ setup(
             f"share/{package_name}/config/sample/pdu",
             ["config/sample/pdu/pdudef.json", "config/sample/pdu/pdutypes.json"],
         ),
-        (f"share/{package_name}/schema", ["schema/service-binding.schema.json"]),
+        (
+            f"share/{package_name}/schema",
+            [
+                "schema/service-binding.schema.json",
+                "schema/action-binding.schema.json",
+            ],
+        ),
         (
             f"share/{package_name}/config/service",
             [
@@ -109,6 +115,7 @@ setup(
         "console_scripts": [
             "bridge = hakoniwa_pdu_ros.__main__:main",
             "service-server = hakoniwa_pdu_ros.service_server_node:main",
+            "action-server = hakoniwa_pdu_ros.action_server_node:main",
         ],
     },
 )

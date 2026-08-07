@@ -103,7 +103,7 @@ def test_runtime_dispatches_two_goals_independently():
         runtime.close()
 
 
-def test_cancel_wait_does_not_consume_feedback_or_result():
+def test_cancel_wait_preserves_unrelated_feedback():
     client = FakeClient()
     runtime = ActionClientRuntime(client)
     runtime.start()
@@ -111,18 +111,31 @@ def test_cancel_wait_does_not_consume_feedback_or_result():
         session, _ = runtime.submit_goal(
             "fibonacci", b"goal", _goal_id(0x70), timeout_usec=100_000
         )
-        client.events.extend(
-            [
-                PollResult(Event.FEEDBACK, session.goal, pdu=b"feedback"),
-                PollResult(Event.RESULT, session.goal, pdu=b"result"),
-            ]
+        client.events.append(
+            PollResult(Event.FEEDBACK, session.goal, pdu=b"feedback")
         )
         cancel = runtime.cancel(session, timeout_sec=1.0)
         assert cancel.event == Event.CANCEL_RESPONSE
         feedback = runtime.wait_for(session, {"FEEDBACK"}, timeout_sec=1.0)
-        result = runtime.wait_for(session, {"RESULT"}, timeout_sec=1.0)
         assert feedback.pdu == b"feedback"
-        assert result.pdu == b"result"
+    finally:
+        runtime.close()
+
+
+def test_cancel_returns_result_when_result_wins_race():
+    client = FakeClient()
+    runtime = ActionClientRuntime(client)
+    runtime.start()
+    try:
+        session, _ = runtime.submit_goal(
+            "fibonacci", b"goal", _goal_id(0x90), timeout_usec=100_000
+        )
+        client.events.append(
+            PollResult(Event.RESULT, session.goal, pdu=b"result")
+        )
+        terminal = runtime.cancel(session, timeout_sec=1.0)
+        assert terminal.event == Event.RESULT
+        assert terminal.pdu == b"result"
     finally:
         runtime.close()
 

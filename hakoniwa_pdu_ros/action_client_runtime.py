@@ -1,20 +1,46 @@
 from __future__ import annotations
 
-import queue
 import threading
 import time
 from dataclasses import dataclass
+
+
+class _GoalInbox:
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._events: list[object] = []
+
+    def put(self, event: object) -> None:
+        with self._condition:
+            self._events.append(event)
+            self._condition.notify_all()
+
+    def get_matching(
+        self, event_names: set[str], *, timeout_sec: float | None = None
+    ) -> object:
+        deadline = None if timeout_sec is None else time.monotonic() + timeout_sec
+        with self._condition:
+            while True:
+                for index, event in enumerate(self._events):
+                    if event.event.name in event_names:
+                        return self._events.pop(index)
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    raise TimeoutError(
+                        f"timed out waiting for Action event: {sorted(event_names)}"
+                    )
+                self._condition.wait(remaining)
 
 
 @dataclass(frozen=True)
 class ActionGoalSession:
     action_name: str
     goal: object
-    events: queue.Queue
+    events: _GoalInbox
 
 
 class ActionClientRuntime:
-    """Serialize native Action polling and dispatch events to Goal-local queues."""
+    """Serialize native Action polling and dispatch events to Goal-local inboxes."""
 
     def __init__(self, client: object, *, idle_sleep_sec: float = 0.001) -> None:
         self._client = client
@@ -44,7 +70,7 @@ class ActionClientRuntime:
         *,
         timeout_usec: int,
     ) -> tuple[ActionGoalSession, object]:
-        events: queue.Queue = queue.Queue()
+        events = _GoalInbox()
         provisional = ActionGoalSession(action_name, None, events)
         with self._lock:
             if goal_id in self._sessions:
@@ -85,34 +111,7 @@ class ActionClientRuntime:
         *,
         timeout_sec: float | None = None,
     ):
-        deadline = None if timeout_sec is None else time.monotonic() + timeout_sec
-        deferred = []
-        try:
-            while True:
-                remaining = None if deadline is None else deadline - time.monotonic()
-                if remaining is not None and remaining <= 0:
-                    raise TimeoutError(
-                        f"timed out waiting for Action event: {sorted(event_names)}"
-                    )
-                event = session.events.get(timeout=remaining)
-                if event.event.name in event_names:
-                    return event
-                deferred.append(event)
-        except queue.Empty as error:
-            raise TimeoutError(
-                f"timed out waiting for Action event: {sorted(event_names)}"
-            ) from error
-        finally:
-            for event in deferred:
-                session.events.put(event)
-
-    def next_event(
-        self, session: ActionGoalSession, *, timeout_sec: float | None = None
-    ):
-        try:
-            return session.events.get(timeout=timeout_sec)
-        except queue.Empty as error:
-            raise TimeoutError("timed out waiting for Action event") from error
+        return session.events.get_matching(event_names, timeout_sec=timeout_sec)
 
     def release(self, goal_id: bytes) -> None:
         with self._lock:

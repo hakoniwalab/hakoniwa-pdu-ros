@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hakoniwalab.github.io/hakoniwa-pdu-ros/action-binding.schema.json",
+  "title": "Hakoniwa ROS Action Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "runtime", "actions"],
+  "properties": {
+    "version": {"const": 1},
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "client_name", "action_config", "endpoint_config"],
+      "properties": {
+        "node_id": {"type": "string", "minLength": 1},
+        "client_name": {"type": "string", "minLength": 1},
+        "action_config": {"type": "string", "minLength": 1},
+        "endpoint_config": {"type": "string", "minLength": 1},
+        "delta_time_usec": {"type": "integer", "minimum": 1, "default": 1000},
+        "time_source_type": {
+          "type": "string",
+          "enum": ["real", "simulation"],
+          "default": "real"
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ros_name", "ros_type", "hakoniwa_action", "pdu_action_type"],
+        "properties": {
+          "ros_name": {"type": "string", "minLength": 1},
+          "ros_type": {
+            "type": "string",
+            "pattern": "^[^/]+/action/[^/]+$"
+          },
+          "hakoniwa_action": {"type": "string", "minLength": 1},
+          "pdu_action_type": {
+            "type": "string",
+            "pattern": "^[^/]+/[^/]+$"
+          },
+          "goal_response_timeout_msec": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 5000
+          }
+        }
+      }
+    }
+  }
+}

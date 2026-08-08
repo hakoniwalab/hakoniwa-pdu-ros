@@ -5,8 +5,8 @@
 ## Purpose
 
 This document defines the direction-neutral Binding contract between ROS 2
-Services and Hakoniwa PDU-RPC, and the runtime contract for the ROS Service
-Server-side Bridge.
+Services and Hakoniwa PDU-RPC, and the runtime contracts for both ROS Service
+Server and Client Bridges.
 
 ```text
 ROS 2 Service Client
@@ -21,14 +21,27 @@ hakoniwa-pdu-rpc RpcClient     (Hakoniwa RPC Client)
 Hakoniwa Asset RPC Server
 ```
 
-Topic bridging remains in the existing independent Topic Bridge Node and
-configuration. The initial implementation does not cover the reverse RPC
-direction, ROS Actions, or application-specific error payloads.
+```text
+Hakoniwa Asset RPC Client
+        |
+        v
+HakoniwaRosServiceClientNode   (Hakoniwa RPC Server)
+        |
+        v
+ROS 2 Service Client
+        |
+        v
+ROS 2 Service Server
+```
+
+Topic and Action bridging retain their independent Nodes and configurations.
+The two Service directions are not mixed in one Node; they share the same
+Binding and generated configuration.
 
 ## Node Roles and Naming
 
-`server` and `client` always describe the ROS-facing role. The current target is
-`HakoniwaRosServiceServerNode`: it receives requests as a ROS Service Server and
+`server` and `client` always describe the ROS-facing role.
+`HakoniwaRosServiceServerNode` receives requests as a ROS Service Server and
 acts as a Hakoniwa RPC Client.
 
 The reverse direction uses a separate `HakoniwaRosServiceClientNode`. It acts
@@ -244,3 +257,10 @@ the accept lifecycle and creates an RPC Server adapter for each accepted
 connection. The Docker E2E uses this API to verify real-TCP concurrency up to
 `max_clients=4` and structured `BUSY` rejection without synthesizing a ROS
 response when capacity is exceeded.
+
+The Service Client Node E2E starts from a real Hakoniwa Typed RPC Client and
+crosses `RpcMuxServer`, `HakoniwaRosServiceClientNode`, and a ROS 2 AddTwoInts
+Server. Two consecutive calls both return `42`. ROS-independent component tests
+cover the normal response, unavailable Service, request conversion failure,
+ROS Future failure, multiple-Service correlation, cancel winning the race, and
+discarding a late ROS Response after timeout.

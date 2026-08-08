@@ -5,7 +5,7 @@
 ## 目的
 
 本文書は、ROS 2 ServiceとHakoniwa PDU-RPCを接続する方向非依存のBinding契約と、
-ROS Service Server側BridgeのRuntime契約を定義する。
+ROS Service Server／Client両BridgeのRuntime契約を定義する。
 
 ```text
 ROS 2 Service Client
@@ -20,14 +20,27 @@ hakoniwa-pdu-rpc RpcClient     (Hakoniwa RPC Client)
 Hakoniwa Asset RPC Server
 ```
 
-Topic Bridgeは既存の独立Nodeと設定を維持する。逆方向RPC、ROS Action、
-アプリケーション固有のエラー応答は初期実装の対象外とする。
+```text
+Hakoniwa Asset RPC Client
+        |
+        v
+HakoniwaRosServiceClientNode   (Hakoniwa RPC Server)
+        |
+        v
+ROS 2 Service Client
+        |
+        v
+ROS 2 Service Server
+```
+
+Topic BridgeとROS Action Bridgeは、それぞれ既存の独立Nodeと設定を維持する。
+Serviceの両方向を一つのNodeへ混在させず、同じBindingと生成物を共有する。
 
 ## Nodeの役割と命名
 
-`server` / `client`は常にROS側から見た役割を表す。現在の実装対象は
-`HakoniwaRosServiceServerNode`であり、ROS Service Serverとして要求を受け、
-Hakoniwa側ではRPC Clientとして動作する。
+`server` / `client`は常にROS側から見た役割を表す。
+`HakoniwaRosServiceServerNode`はROS Service Serverとして要求を受け、Hakoniwa側では
+RPC Clientとして動作する。
 
 逆方向は独立した`HakoniwaRosServiceClientNode`として実装する。このNodeは
 ROS Service Clientとして動作し、Hakoniwa側ではRPC Serverになる。両方向を一つのNodeや
@@ -214,3 +227,8 @@ serverではなく`tcp_mux`を使う。pinned PDU-RPCのPython `RpcMuxServer`が
 受理した各接続に対するRPC Server adapterを隠蔽する。Docker E2EではこのAPIにより、
 `max_clients=4`までの実TCP並列処理と、容量超過時にROS clientへ応答を合成せず構造化`BUSY`ログを
 出すことを確認する。
+
+Service Client NodeのE2Eは、実際のHakoniwa Typed RPC Clientから`RpcMuxServer`、
+`HakoniwaRosServiceClientNode`、ROS 2 AddTwoInts Serverを経由し、2回連続で`42`を取得する。
+ROS非依存component testでは、正常応答、Service利用不可、Request変換失敗、ROS Future例外、
+複数Serviceの相関、Cancel先着、timeout後のlate ROS Response破棄を確認する。

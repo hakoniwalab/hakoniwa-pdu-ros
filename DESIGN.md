@@ -3,6 +3,21 @@
 `hakoniwa-pdu-ros` の設計メモです。README では価値訴求と最短導入を優先し、
 ここでは内部構成と設計意図を補足します。
 
+## Detailed Protocol Specifications
+
+Topic Bridgeの共通構成は本文書で扱う。ServiceとActionは独立したprotocol/runtime契約を
+持つため、次を正本とする。
+
+- [ROS 2 Service Bridge仕様](docs/spec-server.ja.md)
+  - 方向非依存Binding
+  - ROS Service Server／Client両Runtime
+  - installed PDU-RPC generator境界
+  - timeout/cancel/error契約
+- [ROS 2 Action Goal lifecycle](docs/ros2-action-goal-lifecycle.ja.md)
+- [ROS 2 Action user model](docs/ros2-action-user-model.ja.md)
+
+READMEは導入と起動手順、本文書はTopic内部設計、各specはprotocol固有契約を担当する。
+
 ## Responsibilities
 
 - `hakoniwa-pdu-endpoint` Python bindings を PDU I/O 層として使う

@@ -11,10 +11,12 @@ class BridgeTimeoutError(TimeoutError):
 class BridgeCallLifecycle:
     """Apply a bridge-owned deadline to one asynchronous RPC call.
 
-    The RPC future remains the authority for terminal cleanup.  Expiration asks
-    it to cancel, but completion is not reported until that future becomes
-    terminal.  A normal result arriving after expiration is deliberately
-    converted into ``BridgeTimeoutError``.
+    The bridge is the sole deadline owner; callers must start the underlying
+    PDU-RPC call with ``timeout_usec=0`` (infinite wait).  The RPC future remains
+    the authority for terminal cleanup.  Expiration asks it to cancel, but
+    completion is not reported until that future becomes terminal.  A normal
+    result arriving after expiration is deliberately converted into
+    ``BridgeTimeoutError``.
     """
 
     def __init__(

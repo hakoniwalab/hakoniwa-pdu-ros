@@ -25,8 +25,6 @@ from hakoniwa_pdu_ros.service_server_node import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BINDING = REPO_ROOT / "config" / "service" / "add_two_ints.json"
-ENDPOINT_CONFIG = REPO_ROOT / "config" / "service" / "rpc-endpoints.json"
-MUX_ENDPOINT_CONFIG = REPO_ROOT / "config" / "service" / "server-mux-endpoint.json"
 OFFSETS = REPO_ROOT / "test" / "fixtures" / "offset"
 
 
@@ -272,13 +270,14 @@ def _bridge_runtime(
     with AddTwoIntsRpcServer(
         library_path,
         generated.server_config,
-        MUX_ENDPOINT_CONFIG,
+        generated.output_dir / "endpoints" / "server_node.json",
     ) as rpc_server:
         rpc_server.start()
         rclpy.init()
         bridge = HakoniwaRosServiceServerNode(
             binding,
             generated.client_config,
+            generated.endpoint_config,
             library_path,
             generated.services,
         )
@@ -343,6 +342,8 @@ def _binding_with_timeout(tmp_path: Path, *, timeout_msec: int) -> Path:
     binding_path = tmp_path / "add_two_ints.json"
     data = json.loads(BINDING.read_text(encoding="utf-8"))
     data["bindings"][0]["timeout_msec"] = timeout_msec
-    data["rpc"]["endpoint_config"] = str(ENDPOINT_CONFIG)
+    data["service"]["transport_config"] = str(
+        BINDING.parent / "add_two_ints-transport.json"
+    )
     binding_path.write_text(json.dumps(data), encoding="utf-8")
     return binding_path

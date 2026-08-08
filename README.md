@@ -196,10 +196,9 @@ not match the bindings. This also catches `notify_on_recv` drift.
 ## ROS Service Config Generator
 
 The ROS Service Bridge is designed as a node independent from the Topic Bridge.
-`server` and `client` describe the ROS-facing role. The current
-`ros_service_server` Binding targets a ROS Service Server / Hakoniwa RPC Client
-node. The reverse ROS Service Client direction will use a separate node and
-Binding in the future.
+One direction-neutral Service Binding is shared by both directions. `server`
+and `client` in runtime entry-point names describe the ROS-facing role; the
+Binding does not contain a `kind` field.
 The canonical Service Binding schema and AddTwoInts example are located at:
 
 - `schema/service-binding.schema.json`
@@ -207,9 +206,10 @@ The canonical Service Binding schema and AddTwoInts example are located at:
 - [`docs/spec-server.md`](docs/spec-server.md)
 
 The generator resolves an installed ROS `.srv`, generated types from
-`hakoniwa-pdu`, and Hakoniwa offset files. It then emits RPC Server and Client
-configs from one resolved model. Those output names describe PDU-RPC roles and
-are independent of the Binding `kind`. The resolved PDU package/type is also
+`hakoniwa-pdu`, and Hakoniwa offset files, then delegates the abstract Service
+manifest to the installed `hakoniwa-pdu-rpc` generator. The RPC generator owns
+client names, channels, Endpoints, queues, and TCP/tcp_mux details. Its output names describe PDU-RPC roles and
+are independent of the runtime direction. The resolved PDU package/type is also
 passed directly to the Service Node; runtime does not fall back to searching
 only a default package.
 
@@ -223,8 +223,11 @@ Default output:
 
 ```text
 build/generated/service/add_two_ints/
+├── hakoniwa-service.json
 ├── rpc-server-services.json
-└── rpc-client-services.json
+├── rpc-client-services.json
+├── endpoints/
+└── transport/
 ```
 
 When invoked from Business Pack, pass
@@ -244,6 +247,20 @@ service-server \
   --rpc-library /path/to/libhakoniwa_pdu_rpc.so
 ```
 
+Use the same Binding for the ROS Service Client / Hakoniwa Typed RPC Server
+direction:
+
+```bash
+service-client \
+  --config config/service/add_two_ints.json \
+  --offset-dir /path/to/share/hakoniwa/offset \
+  --rpc-library /path/to/libhakoniwa_pdu_rpc.so
+```
+
+In this direction the generated server Endpoint is owned by `RpcMuxServer`,
+and Hakoniwa RPC requests are forwarded through ROS `call_async()`. No `kind`
+field or second Binding is required.
+
 At startup it generates the RPC configs and creates a per-service pool of
 `max_clients` Typed RPC clients. When `--rpc-library` is omitted,
 `HAKO_PDU_RPC_LIBRARY` is used. ROS callbacks bridge `TypedRpcClient.call_async()`
@@ -251,8 +268,10 @@ completion into an `rclpy` Future and do not synchronously wait for RPC. The
 startup diagnostic reports the ROS name/type, Hakoniwa RPC service, resolved
 PDU type, generated client-name range, and timeout.
 
-`timeout_msec` is also the Bridge-owned deadline. Expiration uses the normal
-PDU-RPC cancellation path. A normal result that races in after that deadline is
+`timeout_msec` is owned exclusively by the Bridge. The underlying PDU-RPC call
+uses `timeout_usec=0` (infinite wait), and expiration uses the normal PDU-RPC
+cancellation path. This avoids competing cancellation attempts from Bridge and
+native RPC timers. A normal result that races in after that deadline is
 not converted into a successful ROS response, and the client returns to the
 pool only after its RPC lifecycle reaches a terminal state.
 
@@ -273,6 +292,9 @@ through protocol cancellation, terminal cleanup, pool close, and the absence
 of a synthesized ROS response. Request/response conversion failures are logged
 with their direction and service identity, release the client lease, synthesize
 no ROS response, and do not stop the Service Node.
+The reverse E2E calls the Service Client Node twice from a real Hakoniwa Typed
+RPC Client and verifies both calls traverse a ROS 2 Service Server and return
+`42`.
 
 For an observable three-terminal walkthrough that starts the RPC Server,
 Service Bridge, and `ros2 service call` separately, see the

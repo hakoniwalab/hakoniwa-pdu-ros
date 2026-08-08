@@ -186,9 +186,9 @@ bridge は起動時に `zenoh.io` を検証し、binding と一致しない場�
 
 ## ROS Service設定generator
 
-ROS Service BridgeはTopic Bridgeとは別Nodeとして構築します。`server` / `client`はROS側の
-役割を表し、現在の`ros_service_server` BindingはROS Service Server / Hakoniwa RPC Clientの
-独立Nodeを対象とします。逆方向のROS Service Client Nodeは将来、別Bindingとして追加します。
+ROS Service BridgeはTopic Bridgeとは別Nodeとして構築します。方向非依存の一つの
+Service Bindingを両方向で共有します。Runtime entry point名の`server` / `client`はROS側の
+役割を表し、Bindingには`kind` fieldを持たせません。
 Service Bindingの正本と
 AddTwoIntsの例は次にあります。
 
@@ -197,8 +197,9 @@ AddTwoIntsの例は次にあります。
 - [`docs/spec-server.ja.md`](docs/spec-server.ja.md)
 
 generatorはinstalled ROS `.srv`、`hakoniwa-pdu`のgenerated型、Hakoniwa offsetを解決し、
-同じresolved modelからRPC Server/Client用設定を生成します。これらの出力名はPDU-RPC側の
-役割を表すため、Bindingの`kind`とは別です。解決したPDU package/typeはService Nodeにも
+抽象Service manifestをinstalled `hakoniwa-pdu-rpc` generatorへ渡します。RPC generatorが
+client名、channel、Endpoint、queue、TCP/tcp_muxを含むServer/Client用設定を生成します。これらの出力名はPDU-RPC側の
+役割を表し、ROS側のRuntime方向とは独立しています。解決したPDU package/typeはService Nodeにも
 そのまま渡されるため、Runtimeが既定packageだけを再探索することはありません。
 
 ```bash
@@ -211,8 +212,11 @@ python3 -m hakoniwa_pdu_ros.generate_service_config \
 
 ```text
 build/generated/service/add_two_ints/
+├── hakoniwa-service.json
 ├── rpc-server-services.json
-└── rpc-client-services.json
+├── rpc-client-services.json
+├── endpoints/
+└── transport/
 ```
 
 Business Packから利用する場合は、`--output-dir`へ
@@ -233,12 +237,26 @@ service-server \
   --rpc-library /path/to/libhakoniwa_pdu_rpc.so
 ```
 
+同じBindingを使い、ROS Service Client / Hakoniwa Typed RPC Server方向は次で起動します。
+
+```bash
+service-client \
+  --config config/service/add_two_ints.json \
+  --offset-dir /path/to/share/hakoniwa/offset \
+  --rpc-library /path/to/libhakoniwa_pdu_rpc.so
+```
+
+この方向では生成済みserver Endpointを`RpcMuxServer`が使用し、箱庭RPC RequestをROS
+`call_async()`へ渡します。`kind`や別Bindingは不要です。
+
 `--rpc-library`省略時は`HAKO_PDU_RPC_LIBRARY`を使用します。ROS callbackは
 `TypedRpcClient.call_async()`の完了を`rclpy` Futureへ渡すため、同期RPC待ちでexecutorを
 ブロックしません。起動ログにはROS service名・ROS型・Hakoniwa RPC service名・解決済みPDU型・
 自動生成client名の範囲・timeoutが表示されます。
 
-`timeout_msec`はBridge側の期限でもあります。期限到達時はPDU-RPCの通常cancel経路を使い、
+`timeout_msec`はBridgeが一元管理する期限です。内部PDU-RPC呼び出しは
+`timeout_usec=0`（無期限待ち）で開始し、期限到達時はPDU-RPCの通常cancel経路を使います。
+これによりBridgeとRPC native timeoutからcancelが二重発行される競合を防ぎます。
 その後に正常応答が競合して到着してもROS成功応答へ変換しません。RPCがterminal stateへ
 到達してからclientをpoolへ戻すため、late responseが次の要求へ混入しません。
 
@@ -256,6 +274,8 @@ Python `RpcMuxServer`と`tcp_mux` transportを使用します。要求処理中�
 RPC cancel、terminal cleanup、pool close、ROS応答を合成しないことまで確認します。
 request/response変換エラーについても、変換方向とservice識別情報をログに出し、client leaseを
 解放し、ROS応答を合成せず、Service Nodeが継続することを確認します。
+逆方向も、実際の箱庭Typed RPC ClientからService Client NodeとROS 2 Service Serverを経由して
+2回連続で`42`を取得するE2Eを含みます。
 
 RPC Server、Service Bridge、`ros2 service call`を三つのターミナルで個別に起動して観測するには、
 [ROS Service手動デモ](examples/service/README.ja.md)を参照してください。

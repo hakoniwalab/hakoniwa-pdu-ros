@@ -4,7 +4,8 @@
 
 ## 目的
 
-本文書は、ROS 2 Service ServerからHakoniwa PDU-RPC Clientへ接続するBridge契約を定義する。
+本文書は、ROS 2 ServiceとHakoniwa PDU-RPCを接続する方向非依存のBinding契約と、
+ROS Service Server側BridgeのRuntime契約を定義する。
 
 ```text
 ROS 2 Service Client
@@ -28,18 +29,18 @@ Topic Bridgeは既存の独立Nodeと設定を維持する。逆方向RPC、ROS 
 `HakoniwaRosServiceServerNode`であり、ROS Service Serverとして要求を受け、
 Hakoniwa側ではRPC Clientとして動作する。
 
-逆方向は将来、独立した`HakoniwaRosServiceClientNode`として実装する。このNodeは
+逆方向は独立した`HakoniwaRosServiceClientNode`として実装する。このNodeは
 ROS Service Clientとして動作し、Hakoniwa側ではRPC Serverになる。両方向を一つのNodeや
-一つのBindingに混在させない。
+一つのRuntimeに混在させない。ただし、Bindingは方向非依存で両Nodeが共有する。
 
-| Binding `kind` | ROS側の役割 | Hakoniwa側の役割 | 現在の状態 |
-| --- | --- | --- | --- |
-| `ros_service_server` | Service Server | RPC Client | 本仕様の対象 |
-| `ros_service_client` | Service Client | RPC Server | 将来、別Node・別Binding契約として追加 |
+| Runtime entry point | ROS側の役割 | Hakoniwa側の役割 |
+| --- | --- | --- |
+| `service-server` | Service Server | RPC Client |
+| `service-client` | Service Client | RPC Server |
 
 なお、generatorが出力する`rpc-server-services.json`と
-`rpc-client-services.json`のserver/clientはPDU-RPC側の役割であり、Bindingの`kind`とは
-別の概念である。現在の`ros_service_server` Bindingでも、Bridgeと接続相手のstatic設定を
+`rpc-client-services.json`のserver/clientはPDU-RPC側の役割であり、ROS側のRuntime名とは
+別の概念である。一つのBindingから、Bridgeと接続相手のstatic設定を
 一致させるため両方を生成する。
 
 ## Service Bindingの正本
@@ -50,10 +51,10 @@ ROS Service Clientとして動作し、Hakoniwa側ではRPC Serverになる。�
 
 利用者が指定する項目:
 
-- ROS側の役割を示す`kind`（現在は`ros_service_server`）
 - ROS service名と`package/srv/Type`
 - Hakoniwa service名
-- RPC client/server Endpoint参照
+- RPC client/server Endpointのnode ID
+- Transport設定ファイル
 - serviceごとの`max_clients`
 - Bridge timeout
 - 任意のrequest/response heap容量
@@ -61,8 +62,8 @@ ROS Service Clientとして動作し、Hakoniwa側ではRPC Serverになる。�
 
 RPC client名とchannel IDは利用者に指定させない。
 
-`rpc.endpoint_config`の相対pathはService Bindingファイル基準で解決する。Endpoint参照は
-そのregistry内に存在しなければならない。不明field、service名や正規化後service-keyの重複、
+`service.transport_config`の相対pathはService Bindingファイル基準で解決する。Endpoint参照は
+そのTransport定義内に存在しなければならない。不明field、service名や正規化後service-keyの重複、
 不正な容量、型解決失敗は生成・起動前に拒否する。
 
 ## 設定生成
@@ -75,19 +76,27 @@ python3 -m hakoniwa_pdu_ros.generate_service_config \
   --offset-dir /path/to/share/hakoniwa/offset
 ```
 
-generatorが解決する内容:
+ROS側generatorが解決する内容:
 
 1. installed ROS service classと`.srv`定義
 2. `hakoniwa-pdu`に含まれる対応PDU Request/Response Packet型
 3. Hakoniwa offsetファイルを正本とするPacket base size
-4. client名、channel、Endpoint参照、容量、heap
+4. PDU-RPC generatorへ渡す抽象Service manifest
+
+PDU-RPC側generatorがclient名、channel ID、native `pduSize`、Endpoint ID、queue、
+PDU定義、TCP／tcp_mux設定を生成する。ROS側はこれらのnative形式を所有しない。
 
 生成物:
 
 ```text
 build/generated/service/<binding-id>/
+├── hakoniwa-service.json
+├── resolved-service.json
 ├── rpc-server-services.json
-└── rpc-client-services.json
+├── rpc-client-services.json
+├── endpoints.json
+├── endpoints/
+└── transport/
 ```
 
 両ファイルは一つのresolved modelから生成する。RPC Server用にはserver Endpointとstatic client
@@ -141,7 +150,9 @@ contextへ受け渡してからROS responseを完了する。
 
 ## Timeoutとshutdown
 
-BridgeはPDU-RPCの通常timeout/cancel state machineを使い、request IDやcancel stateを複製しない。
+Bridgeがdeadlineを一元管理し、PDU-RPC呼び出し自体は`timeout_usec=0`（無期限待ち）で
+開始する。期限到達時はPDU-RPCの通常cancel state machineを使い、request IDやcancel stateを
+複製しない。BridgeとPDU-RPCへ同じtimeoutを二重設定して、cancelを競合させてはならない。
 
 timeout時:
 

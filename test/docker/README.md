@@ -48,6 +48,8 @@ The container runs two groups of tests:
    - resolves the installed `example_interfaces/srv/AddTwoInts` class and `.srv`
    - resolves the PyPI `hakoniwa-pdu` generated service type
    - generates matching server/client RPC configs with deterministic client names and channels
+   - delegates native Endpoint, queue, TCP, and tcp_mux expansion to the pinned
+     `hakoniwa-pdu-rpc` Service generator
 
 4. Native AddTwoInts RPC baseline
    - starts the reusable test RPC server over the real `tcp_mux` Endpoint transport
@@ -71,9 +73,15 @@ Hakoniwa RPC baseline reused by the ROS Service Server Node tests.
    - verifies shutdown during an active call sends protocol cancellation, waits
      for terminal cleanup, closes the pool, and synthesizes no ROS response
    - injects request and response conversion failures, verifies directional
-     diagnostics, no synthesized response, lease release, and a later successful call
+   diagnostics, no synthesized response, lease release, and a later successful call
 
-6. ROS Action Server Node E2E
+6. ROS Service Client Node E2E
+   - starts a real ROS 2 AddTwoInts Service Server
+   - starts `HakoniwaRosServiceClientNode` as a Typed RPC/tcp_mux Server
+   - calls it twice from a real Hakoniwa Typed RPC Client
+   - verifies both requests traverse the ROS Service and return `42`
+
+7. ROS Action Server Node E2E
    - generates the Hakoniwa Action runtime configuration from
      `config/action/fibonacci.json`
    - starts a real Hakoniwa Fibonacci Action Server over the CFFI/TCP runtime
@@ -89,7 +97,7 @@ Hakoniwa RPC baseline reused by the ROS Service Server Node tests.
    - verifies a missing Hakoniwa Goal Response becomes ROS Goal rejection at
      the configured timeout
 
-7. ROS Action Client Node E2E
+8. ROS Action Client Node E2E
    - starts a real ROS 2 Fibonacci Action Server
    - starts `HakoniwaRosActionClientNode` with the generated shared Action
      configuration

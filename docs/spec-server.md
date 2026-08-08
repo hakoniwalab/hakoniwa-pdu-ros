@@ -4,8 +4,9 @@
 
 ## Purpose
 
-This document defines the ROS 2 Service Server to Hakoniwa PDU-RPC Client
-bridge contract.
+This document defines the direction-neutral Binding contract between ROS 2
+Services and Hakoniwa PDU-RPC, and the runtime contract for the ROS Service
+Server-side Bridge.
 
 ```text
 ROS 2 Service Client
@@ -30,19 +31,19 @@ direction, ROS Actions, or application-specific error payloads.
 `HakoniwaRosServiceServerNode`: it receives requests as a ROS Service Server and
 acts as a Hakoniwa RPC Client.
 
-The reverse direction will be implemented separately as
-`HakoniwaRosServiceClientNode`. It will act as a ROS Service Client and a
-Hakoniwa RPC Server. The two directions are not mixed in one node or Binding.
+The reverse direction uses a separate `HakoniwaRosServiceClientNode`. It acts
+as a ROS Service Client and a Hakoniwa RPC Server. The two directions are not
+mixed in one runtime, but both Nodes share the same direction-neutral Binding.
 
-| Binding `kind` | ROS role | Hakoniwa role | Status |
-| --- | --- | --- | --- |
-| `ros_service_server` | Service Server | RPC Client | Defined by this specification |
-| `ros_service_client` | Service Client | RPC Server | Future separate node and Binding contract |
+| Runtime entry point | ROS role | Hakoniwa role |
+| --- | --- | --- |
+| `service-server` | Service Server | RPC Client |
+| `service-client` | Service Client | RPC Server |
 
 The `server` and `client` in the generated filenames
 `rpc-server-services.json` and `rpc-client-services.json` describe PDU-RPC
-roles, not the Binding `kind`. A current `ros_service_server` Binding generates
-both files so the Bridge and its static counterpart use the same resolved
+roles, not the ROS runtime direction. A single Service Binding generates both
+files so the Bridge and its static counterpart use the same resolved
 configuration.
 
 ## Canonical Service Binding
@@ -54,10 +55,10 @@ An AddTwoInts example is available at
 
 The user declares:
 
-- `kind`, identifying the ROS-facing role (currently `ros_service_server`);
 - ROS service name and `package/srv/Type`;
 - Hakoniwa service name;
-- RPC client and server endpoint references;
+- RPC client and server endpoint node IDs;
+- a Transport configuration file;
 - per-service `max_clients`;
 - bridge timeout;
 - optional request/response heap capacity;
@@ -65,8 +66,8 @@ The user declares:
 
 The user does not declare RPC client names or channel IDs.
 
-Relative `rpc.endpoint_config` paths are resolved from the Service Binding
-file. Endpoint references must exist in that endpoint registry. Unknown fields,
+Relative `service.transport_config` paths are resolved from the Service Binding
+file. Endpoint references must exist in that Transport definition. Unknown fields,
 duplicate service names, duplicate normalized service keys, invalid capacities,
 and unresolved types are rejected before generation or startup.
 
@@ -80,20 +81,29 @@ python3 -m hakoniwa_pdu_ros.generate_service_config \
   --offset-dir /path/to/share/hakoniwa/offset
 ```
 
-The generator resolves:
+The ROS-side generator resolves:
 
 1. the installed ROS service class and `.srv` definition;
 2. the matching generated PDU Request/Response packet types from
    `hakoniwa-pdu`;
 3. packet base sizes from canonical Hakoniwa offset files;
-4. client names, channels, endpoint references, capacities, and heap values.
+4. an abstract Service manifest passed to the PDU-RPC generator.
+
+The PDU-RPC generator owns client names, channel IDs, native `pduSize`
+placement, Endpoint IDs, queue/PDU definitions, and TCP/tcp_mux files. The ROS
+adapter does not own those native formats.
 
 Output:
 
 ```text
 build/generated/service/<binding-id>/
+├── hakoniwa-service.json
+├── resolved-service.json
 ├── rpc-server-services.json
-└── rpc-client-services.json
+├── rpc-client-services.json
+├── endpoints.json
+├── endpoints/
+└── transport/
 ```
 
 Both files are projections of one resolved model. The RPC server config contains
@@ -157,8 +167,11 @@ for its own wait timeout and retry policy.
 
 ## Timeout and Shutdown
 
-The Bridge uses the normal PDU-RPC timeout/cancel state machine. It does not
-duplicate request IDs or cancellation state.
+The Bridge is the sole deadline owner and starts the underlying PDU-RPC call
+with `timeout_usec=0` (infinite wait). When its deadline expires, it uses the
+normal PDU-RPC cancellation state machine without duplicating request IDs or
+cancellation state. The same timeout must not be configured in both layers,
+because that would race two cancellation attempts.
 
 On timeout:
 

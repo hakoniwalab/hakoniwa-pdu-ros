@@ -29,7 +29,7 @@ def test_add_two_ints_resolves_installed_ros_and_pdu_types(tmp_path: Path) -> No
         "responseChannelId": 7,
         "client_endpoint": {
             "nodeId": "hakoniwa-pdu-ros-service",
-            "endpointId": "client_ep_id",
+            "endpointId": "hakoniwa-pdu-ros-service-service-tcp",
         },
     }
 

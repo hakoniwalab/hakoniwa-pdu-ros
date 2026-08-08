@@ -9,13 +9,11 @@ from pathlib import Path
 @dataclass(frozen=True)
 class EndpointRef:
     node_id: str
-    endpoint_id: str
 
 
 @dataclass(frozen=True)
-class RpcBindingConfig:
-    client_endpoint: EndpointRef
-    endpoint_config: Path
+class ServiceRuntimeConfig:
+    transport_config: Path
     delta_time_usec: int = 1000
     time_source_type: str = "real"
 
@@ -31,7 +29,8 @@ class ServiceBinding:
     ros_name: str
     ros_type: str
     hakoniwa_service: str
-    server_endpoints: tuple[EndpointRef, ...]
+    client_endpoint: EndpointRef
+    server_endpoint: EndpointRef
     max_clients: int
     timeout_msec: int
     heap: HeapConfig
@@ -42,8 +41,7 @@ class ServiceBinding:
 class ServiceBindingConfig:
     source_path: Path
     version: int
-    kind: str
-    rpc: RpcBindingConfig
+    service: ServiceRuntimeConfig
     bindings: tuple[ServiceBinding, ...]
 
 
@@ -51,20 +49,12 @@ def load_service_binding(path: str | Path) -> ServiceBindingConfig:
     source_path = Path(path).expanduser().resolve()
     raw = _load_json(source_path)
     _require_object(raw, "root")
-    _reject_unknown(raw, {"$schema", "version", "kind", "rpc", "bindings"}, "root")
-
-    version = raw.get("version")
-    if version != 1:
+    _reject_unknown(raw, {"$schema", "version", "service", "bindings"}, "root")
+    if raw.get("version") != 1:
         raise ValueError("Service Binding version must be 1")
 
-    kind = raw.get("kind")
-    if kind != "ros_service_server":
-        raise ValueError(
-            "Service Binding kind must be 'ros_service_server'; "
-            "the ROS Service Client direction is not implemented"
-        )
-
-    rpc = _parse_rpc(raw.get("rpc"), source_path.parent)
+    service = _parse_service(raw.get("service"), source_path.parent)
+    transport = _load_transport(service.transport_config)
     raw_bindings = raw.get("bindings")
     if not isinstance(raw_bindings, list) or not raw_bindings:
         raise ValueError("Service Binding bindings must be a non-empty array")
@@ -72,15 +62,8 @@ def load_service_binding(path: str | Path) -> ServiceBindingConfig:
         _parse_binding(entry, index) for index, entry in enumerate(raw_bindings)
     )
     _validate_unique_bindings(bindings)
-    _validate_endpoint_refs(rpc, bindings)
-
-    return ServiceBindingConfig(
-        source_path=source_path,
-        version=version,
-        kind=kind,
-        rpc=rpc,
-        bindings=bindings,
-    )
+    _validate_endpoint_refs(bindings, transport)
+    return ServiceBindingConfig(source_path, 1, service, bindings)
 
 
 def service_key(service_name: str) -> str:
@@ -92,30 +75,28 @@ def service_key(service_name: str) -> str:
     return normalized
 
 
-def _parse_rpc(raw: object, base_dir: Path) -> RpcBindingConfig:
-    _require_object(raw, "rpc")
+def _parse_service(raw: object, base_dir: Path) -> ServiceRuntimeConfig:
+    _require_object(raw, "service")
     _reject_unknown(
         raw,
-        {"client_endpoint", "endpoint_config", "delta_time_usec", "time_source_type"},
-        "rpc",
+        {"transport_config", "delta_time_usec", "time_source_type"},
+        "service",
     )
-    client_endpoint = _parse_endpoint_ref(raw.get("client_endpoint"), "rpc.client_endpoint")
-    endpoint_config_raw = _require_string(raw.get("endpoint_config"), "rpc.endpoint_config")
-    endpoint_config = Path(endpoint_config_raw).expanduser()
-    if not endpoint_config.is_absolute():
-        endpoint_config = (base_dir / endpoint_config).resolve()
-    if not endpoint_config.is_file():
-        raise ValueError(f"RPC endpoint config does not exist: {endpoint_config}")
-
-    delta_time_usec = _positive_int(raw.get("delta_time_usec", 1000), "rpc.delta_time_usec")
-    time_source_type = _require_string(
-        raw.get("time_source_type", "real"), "rpc.time_source_type"
-    )
-    return RpcBindingConfig(
-        client_endpoint=client_endpoint,
-        endpoint_config=endpoint_config,
-        delta_time_usec=delta_time_usec,
-        time_source_type=time_source_type,
+    transport = Path(
+        _require_string(raw.get("transport_config"), "service.transport_config")
+    ).expanduser()
+    if not transport.is_absolute():
+        transport = (base_dir / transport).resolve()
+    if not transport.is_file():
+        raise ValueError(f"Service transport config does not exist: {transport}")
+    return ServiceRuntimeConfig(
+        transport_config=transport,
+        delta_time_usec=_positive_int(
+            raw.get("delta_time_usec", 1000), "service.delta_time_usec"
+        ),
+        time_source_type=_require_string(
+            raw.get("time_source_type", "real"), "service.time_source_type"
+        ),
     )
 
 
@@ -128,7 +109,8 @@ def _parse_binding(raw: object, index: int) -> ServiceBinding:
             "ros_name",
             "ros_type",
             "hakoniwa_service",
-            "server_endpoints",
+            "client_endpoint",
+            "server_endpoint",
             "max_clients",
             "timeout_msec",
             "heap",
@@ -139,25 +121,26 @@ def _parse_binding(raw: object, index: int) -> ServiceBinding:
     ros_name = _require_string(raw.get("ros_name"), f"{path}.ros_name")
     if not re.fullmatch(r"/[A-Za-z_][A-Za-z0-9_/]*", ros_name):
         raise ValueError(f"{path}.ros_name must be an absolute ROS service name")
-
     ros_type = _require_string(raw.get("ros_type"), f"{path}.ros_type")
-    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*/srv/[A-Za-z][A-Za-z0-9_]*", ros_type):
+    if not re.fullmatch(
+        r"[A-Za-z][A-Za-z0-9_]*/srv/[A-Za-z][A-Za-z0-9_]*", ros_type
+    ):
         raise ValueError(f"{path}.ros_type must use package/srv/Type form")
 
-    endpoints_raw = raw.get("server_endpoints")
-    if not isinstance(endpoints_raw, list) or not endpoints_raw:
-        raise ValueError(f"{path}.server_endpoints must be a non-empty array")
-    server_endpoints = tuple(
-        _parse_endpoint_ref(item, f"{path}.server_endpoints[{endpoint_index}]")
-        for endpoint_index, item in enumerate(endpoints_raw)
-    )
-
-    heap = _parse_heap(raw.get("heap"), path)
     pdu_service_type = raw.get("pdu_service_type")
     if pdu_service_type is not None:
         pdu_service_type = _require_string(
             pdu_service_type, f"{path}.pdu_service_type"
         )
+        if not re.fullmatch(
+            r"[A-Za-z][A-Za-z0-9_]*/[A-Za-z][A-Za-z0-9_]*",
+            pdu_service_type,
+        ):
+            raise ValueError(f"{path}.pdu_service_type must use package/Type form")
+        if pdu_service_type.rsplit("/", 1)[-1] != ros_type.rsplit("/", 1)[-1]:
+            raise ValueError(
+                f"{path}.pdu_service_type basename must match ros_type"
+            )
 
     return ServiceBinding(
         ros_name=ros_name,
@@ -165,10 +148,17 @@ def _parse_binding(raw: object, index: int) -> ServiceBinding:
         hakoniwa_service=_require_string(
             raw.get("hakoniwa_service"), f"{path}.hakoniwa_service"
         ),
-        server_endpoints=server_endpoints,
+        client_endpoint=_parse_endpoint_ref(
+            raw.get("client_endpoint"), f"{path}.client_endpoint"
+        ),
+        server_endpoint=_parse_endpoint_ref(
+            raw.get("server_endpoint"), f"{path}.server_endpoint"
+        ),
         max_clients=_positive_int(raw.get("max_clients"), f"{path}.max_clients"),
-        timeout_msec=_positive_int(raw.get("timeout_msec"), f"{path}.timeout_msec"),
-        heap=heap,
+        timeout_msec=_positive_int(
+            raw.get("timeout_msec"), f"{path}.timeout_msec"
+        ),
+        heap=_parse_heap(raw.get("heap"), path),
         pdu_service_type=pdu_service_type,
     )
 
@@ -180,7 +170,9 @@ def _parse_heap(raw: object, binding_path: str) -> HeapConfig:
     _require_object(raw, path)
     _reject_unknown(raw, {"request_bytes", "response_bytes"}, path)
     return HeapConfig(
-        request_bytes=_nonnegative_int(raw.get("request_bytes", 0), f"{path}.request_bytes"),
+        request_bytes=_nonnegative_int(
+            raw.get("request_bytes", 0), f"{path}.request_bytes"
+        ),
         response_bytes=_nonnegative_int(
             raw.get("response_bytes", 0), f"{path}.response_bytes"
         ),
@@ -189,11 +181,51 @@ def _parse_heap(raw: object, binding_path: str) -> HeapConfig:
 
 def _parse_endpoint_ref(raw: object, path: str) -> EndpointRef:
     _require_object(raw, path)
-    _reject_unknown(raw, {"node_id", "endpoint_id"}, path)
-    return EndpointRef(
-        node_id=_require_string(raw.get("node_id"), f"{path}.node_id"),
-        endpoint_id=_require_string(raw.get("endpoint_id"), f"{path}.endpoint_id"),
+    _reject_unknown(raw, {"node_id"}, path)
+    return EndpointRef(_require_string(raw.get("node_id"), f"{path}.node_id"))
+
+
+def _load_transport(path: Path) -> dict:
+    raw = _load_json(path)
+    _require_object(raw, "transport")
+    _reject_unknown(
+        raw,
+        {"protocol", "packetVersion", "queueDepth", "endpoints"},
+        "transport",
     )
+    if raw.get("protocol") != "tcp":
+        raise ValueError("Service transport protocol must be 'tcp'")
+    if raw.get("packetVersion", "v2") not in {"v1", "v2"}:
+        raise ValueError("Service transport packetVersion must be 'v1' or 'v2'")
+    _positive_int(raw.get("queueDepth", 64), "transport.queueDepth")
+    endpoints = raw.get("endpoints")
+    _require_object(endpoints, "transport.endpoints")
+    for node_id, endpoint in endpoints.items():
+        if not isinstance(node_id, str) or not node_id:
+            raise ValueError("transport endpoint node IDs must be non-empty strings")
+        _validate_transport_endpoint(endpoint, f"transport.endpoints.{node_id}")
+    return raw
+
+
+def _validate_transport_endpoint(raw: object, path: str) -> None:
+    _require_object(raw, path)
+    _reject_unknown(raw, {"role", "local", "remote", "options"}, path)
+    role = raw.get("role")
+    if role not in {"server", "client"}:
+        raise ValueError(f"{path}.role must be 'server' or 'client'")
+    address_key = "local" if role == "server" else "remote"
+    forbidden_key = "remote" if role == "server" else "local"
+    if forbidden_key in raw:
+        raise ValueError(f"{path}.{forbidden_key} is invalid for role {role!r}")
+    address = raw.get(address_key)
+    _require_object(address, f"{path}.{address_key}")
+    _reject_unknown(address, {"address", "port"}, f"{path}.{address_key}")
+    _require_string(address.get("address"), f"{path}.{address_key}.address")
+    port = address.get("port")
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValueError(f"{path}.{address_key}.port must be an integer in 1..65535")
+    if "options" in raw:
+        _require_object(raw["options"], f"{path}.options")
 
 
 def _validate_unique_bindings(bindings: tuple[ServiceBinding, ...]) -> None:
@@ -202,36 +234,43 @@ def _validate_unique_bindings(bindings: tuple[ServiceBinding, ...]) -> None:
         (binding.hakoniwa_service for binding in bindings), "Hakoniwa service name"
     )
     _reject_duplicates(
-        (service_key(binding.hakoniwa_service) for binding in bindings), "service key"
+        (service_key(binding.hakoniwa_service) for binding in bindings),
+        "service key",
     )
 
 
 def _validate_endpoint_refs(
-    rpc: RpcBindingConfig, bindings: tuple[ServiceBinding, ...]
+    bindings: tuple[ServiceBinding, ...], transport: dict
 ) -> None:
-    raw = _load_json(rpc.endpoint_config)
-    if not isinstance(raw, list):
-        raise ValueError("RPC endpoint config must be an array")
-    available: set[tuple[str, str]] = set()
-    for node in raw:
-        if not isinstance(node, dict):
-            continue
-        node_id = node.get("nodeId")
-        endpoints = node.get("endpoints")
-        if not isinstance(node_id, str) or not isinstance(endpoints, list):
-            continue
-        for endpoint in endpoints:
-            if isinstance(endpoint, dict) and isinstance(endpoint.get("id"), str):
-                available.add((node_id, endpoint["id"]))
-
-    refs = [rpc.client_endpoint]
-    refs.extend(endpoint for binding in bindings for endpoint in binding.server_endpoints)
-    for endpoint in refs:
-        key = (endpoint.node_id, endpoint.endpoint_id)
-        if key not in available:
+    endpoints = transport["endpoints"]
+    referenced = {
+        endpoint.node_id
+        for binding in bindings
+        for endpoint in (binding.client_endpoint, binding.server_endpoint)
+    }
+    missing = sorted(referenced - set(endpoints))
+    extra = sorted(set(endpoints) - referenced)
+    if missing:
+        raise ValueError(
+            "transport.endpoints is missing referenced node IDs: "
+            + ", ".join(missing)
+        )
+    if extra:
+        raise ValueError(
+            "transport.endpoints has unreferenced node IDs: " + ", ".join(extra)
+        )
+    for index, binding in enumerate(bindings):
+        if binding.client_endpoint.node_id == binding.server_endpoint.node_id:
             raise ValueError(
-                "Endpoint reference is not present in rpc.endpoint_config: "
-                f"{endpoint.node_id}/{endpoint.endpoint_id}"
+                f"bindings[{index}] client_endpoint and server_endpoint must differ"
+            )
+        if endpoints[binding.client_endpoint.node_id]["role"] != "client":
+            raise ValueError(
+                f"bindings[{index}].client_endpoint must reference a client transport"
+            )
+        if endpoints[binding.server_endpoint.node_id]["role"] != "server":
+            raise ValueError(
+                f"bindings[{index}].server_endpoint must reference a server transport"
             )
 
 

@@ -1,13 +1,8 @@
 {
   "$schema": "../../schema/service-binding.schema.json",
   "version": 1,
-  "kind": "ros_service_server",
-  "rpc": {
-    "client_endpoint": {
-      "node_id": "hakoniwa-pdu-ros-service",
-      "endpoint_id": "client_ep_id"
-    },
-    "endpoint_config": "rpc-endpoints.json",
+  "service": {
+    "transport_config": "add_two_ints-transport.json",
     "delta_time_usec": 1000,
     "time_source_type": "real"
   },
@@ -16,12 +11,8 @@
       "ros_name": "/add_two_ints",
       "ros_type": "example_interfaces/srv/AddTwoInts",
       "hakoniwa_service": "Service/Add",
-      "server_endpoints": [
-        {
-          "node_id": "server_node",
-          "endpoint_id": "server_ep_id"
-        }
-      ],
+      "client_endpoint": {"node_id": "hakoniwa-pdu-ros-service"},
+      "server_endpoint": {"node_id": "server_node"},
       "max_clients": 4,
       "timeout_msec": 3000
     }

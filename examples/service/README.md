@@ -41,7 +41,7 @@ docker exec -it hakoniwa-pdu-ros-service-demo bash -lc '
   source /opt/ros/jazzy/setup.bash
   python /workspace/examples/service/add_two_ints_rpc_server.py \
     --service-config /tmp/add-two-ints/rpc-server-services.json \
-    --endpoint-config /workspace/config/service/server-mux-endpoint.json
+    --endpoint-config /tmp/add-two-ints/endpoints/server_node.json
 '
 ```
 

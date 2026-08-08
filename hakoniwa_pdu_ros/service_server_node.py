@@ -37,12 +37,14 @@ class HakoniwaRosServiceServerNode(Node):
         self,
         config: ServiceBindingConfig,
         rpc_service_config: str | Path,
+        rpc_endpoint_config: str | Path,
         rpc_library: str | Path,
         resolved_services: tuple[ResolvedService, ...],
     ) -> None:
         super().__init__("hakoniwa_pdu_ros_service_server")
         self._config = config
         self._rpc_service_config = Path(rpc_service_config).resolve()
+        self._rpc_endpoint_config = Path(rpc_endpoint_config).resolve()
         self._rpc_library = Path(rpc_library).resolve()
         self._callback_group = ReentrantCallbackGroup()
         self._pools: dict[str, RpcClientPool] = {}
@@ -93,12 +95,12 @@ class HakoniwaRosServiceServerNode(Node):
         def client_factory(name: str):
             rpc_client = RpcClient(
                 self._rpc_library,
-                self._config.rpc.client_endpoint.node_id,
+                binding.client_endpoint.node_id,
                 name,
                 self._rpc_service_config,
-                self._config.rpc.endpoint_config,
-                self._config.rpc.delta_time_usec,
-                self._config.rpc.time_source_type,
+                self._rpc_endpoint_config,
+                self._config.service.delta_time_usec,
+                self._config.service.time_source_type,
             )
             typed_client = make_typed_client(
                 rpc_client,
@@ -139,7 +141,12 @@ class HakoniwaRosServiceServerNode(Node):
                 )
                 rpc_future = lease.typed_client.call_async(
                     rpc_request,
-                    timeout_usec=binding.timeout_msec * 1000,
+                    # The bridge lifecycle below is the sole deadline owner.
+                    # A native timeout here would race its protocol cancel
+                    # against BridgeCallLifecycle._expire().  PDU-RPC defines
+                    # zero as an infinite wait, so terminal cleanup remains
+                    # owned by the RPC future after the bridge requests cancel.
+                    timeout_usec=0,
                 )
                 pool.set_future(lease, rpc_future)
 
@@ -215,6 +222,7 @@ def run(
         node = HakoniwaRosServiceServerNode(
             config,
             generated.client_config,
+            generated.endpoint_config,
             library,
             generated.services,
         )

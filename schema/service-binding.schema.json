@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hakoniwalab.github.io/hakoniwa-pdu-ros/schema/service-binding.schema.json",
-  "title": "Hakoniwa ROS 2 Service Server Bridge Binding",
-  "description": "Configuration consumed by the standalone ROS Service Server / Hakoniwa RPC Client bridge node.",
+  "title": "Hakoniwa ROS 2 Service Bridge Binding",
+  "description": "Direction-neutral configuration shared by the ROS Service Server and Client bridge nodes.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "kind", "rpc", "bindings"],
+  "required": ["version", "service", "bindings"],
   "properties": {
     "$schema": {
       "type": "string"
@@ -13,12 +13,8 @@
     "version": {
       "const": 1
     },
-    "kind": {
-      "const": "ros_service_server",
-      "description": "Role of the ROS-facing node. The current schema defines only the ROS Service Server / Hakoniwa RPC Client direction."
-    },
-    "rpc": {
-      "$ref": "#/$defs/rpc"
+    "service": {
+      "$ref": "#/$defs/service"
     },
     "bindings": {
       "type": "array",
@@ -29,18 +25,15 @@
     }
   },
   "$defs": {
-    "rpc": {
+    "service": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["client_endpoint", "endpoint_config"],
+      "required": ["transport_config"],
       "properties": {
-        "client_endpoint": {
-          "$ref": "#/$defs/endpoint_ref"
-        },
-        "endpoint_config": {
+        "transport_config": {
           "type": "string",
           "minLength": 1,
-          "description": "PDU-RPC endpoint configuration path, resolved relative to this binding file."
+          "description": "Hakoniwa Service transport object path, resolved relative to this binding file."
         },
         "delta_time_usec": {
           "type": "integer",
@@ -57,13 +50,9 @@
     "endpoint_ref": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["node_id", "endpoint_id"],
+      "required": ["node_id"],
       "properties": {
         "node_id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "endpoint_id": {
           "type": "string",
           "minLength": 1
         }
@@ -92,7 +81,8 @@
         "ros_name",
         "ros_type",
         "hakoniwa_service",
-        "server_endpoints",
+        "client_endpoint",
+        "server_endpoint",
         "max_clients",
         "timeout_msec"
       ],
@@ -100,7 +90,7 @@
         "ros_name": {
           "type": "string",
           "pattern": "^/[A-Za-z_][A-Za-z0-9_/]*$",
-          "description": "Absolute ROS 2 service name exposed by the bridge."
+          "description": "Absolute ROS 2 service name exposed or called by the selected bridge entry point."
         },
         "ros_type": {
           "type": "string",
@@ -112,13 +102,13 @@
           "minLength": 1,
           "description": "Service name generated into the PDU-RPC service configuration."
         },
-        "server_endpoints": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/endpoint_ref"
-          },
-          "description": "PDU-RPC server endpoints generated into the server-side service configuration."
+        "client_endpoint": {
+          "$ref": "#/$defs/endpoint_ref",
+          "description": "Logical PDU-RPC client endpoint."
+        },
+        "server_endpoint": {
+          "$ref": "#/$defs/endpoint_ref",
+          "description": "Logical PDU-RPC server endpoint."
         },
         "max_clients": {
           "type": "integer",

@@ -1,6 +1,0 @@
-{
-  "name": "add_two_ints_rpc_server_mux",
-  "pdu_def_path": "rpc-pdudef.json",
-  "cache": "rpc-queue.json",
-  "comm": "rpc-server-mux-comm.json"
-}

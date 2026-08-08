@@ -6,21 +6,16 @@ import json
 import os
 import pkgutil
 import tempfile
-from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from hakoniwa_pdu_ros.service_binding import (
-    EndpointRef,
     ServiceBinding,
     ServiceBindingConfig,
     load_service_binding,
     service_key,
 )
-
-
-PDU_METADATA_SIZE = 24
 
 
 @dataclass(frozen=True)
@@ -34,8 +29,11 @@ class ResolvedService:
 @dataclass(frozen=True)
 class GeneratedServiceConfigs:
     output_dir: Path
+    manifest: Path
     server_config: Path
     client_config: Path
+    endpoint_config: Path
+    generated_files: tuple[Path, ...]
     services: tuple[ResolvedService, ...]
 
 
@@ -46,11 +44,13 @@ def generate_service_configs(
     offset_dir: str | Path | None = None,
     ros_interface_resolver: Callable[[str], None] | None = None,
     pdu_type_resolver: Callable[[str, str | None], str] | None = None,
+    rpc_generator: Callable[[Path, Path], list[Path]] | None = None,
 ) -> GeneratedServiceConfigs:
     config = load_service_binding(config_path)
     offsets = _resolve_offset_dir(offset_dir)
     resolve_ros = ros_interface_resolver or resolve_installed_ros_service
     resolve_pdu = pdu_type_resolver or resolve_installed_pdu_service_type
+    generate_rpc = rpc_generator or _load_rpc_generator()
 
     resolved: list[ResolvedService] = []
     for binding in config.bindings:
@@ -71,17 +71,24 @@ def generate_service_configs(
 
     target_dir = _resolve_output_dir(config, output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = target_dir / "hakoniwa-service.json"
+    _write_json_atomic(manifest_path, _build_rpc_manifest(config, resolved))
+    generated = tuple(generate_rpc(manifest_path, target_dir))
     server_path = target_dir / "rpc-server-services.json"
     client_path = target_dir / "rpc-client-services.json"
-
-    server_data = _build_role_config(config, resolved, role="server")
-    client_data = _build_role_config(config, resolved, role="client")
-    _write_json_atomic(server_path, server_data)
-    _write_json_atomic(client_path, client_data)
+    endpoint_path = target_dir / "endpoints.json"
+    for expected in (server_path, client_path, endpoint_path):
+        if not expected.is_file():
+            raise ValueError(
+                f"PDU-RPC Service generator did not create required file: {expected}"
+            )
     return GeneratedServiceConfigs(
         output_dir=target_dir,
+        manifest=manifest_path,
         server_config=server_path,
         client_config=client_path,
+        endpoint_config=endpoint_path,
+        generated_files=generated,
         services=tuple(resolved),
     )
 
@@ -178,62 +185,51 @@ def resolve_offset_size(offset_dir: Path, packet_type: str) -> int:
     return _align8(member_offset + member_size + 8)
 
 
-def _build_role_config(
+def _build_rpc_manifest(
     config: ServiceBindingConfig,
     services: list[ResolvedService],
-    *,
-    role: str,
 ) -> dict:
+    transport = json.loads(
+        config.service.transport_config.read_text(encoding="utf-8")
+    )
     entries = []
     for resolved in services:
         binding = resolved.binding
-        clients = _build_clients(binding, config.rpc.client_endpoint)
-        server_endpoints = (
-            [_endpoint_json(endpoint) for endpoint in binding.server_endpoints]
-            if role == "server"
-            else []
-        )
         entries.append(
             {
                 "name": binding.hakoniwa_service,
                 "type": resolved.pdu_service_type,
                 "maxClients": binding.max_clients,
-                "pduSize": {
-                    "server": {
-                        # Native PDU-RPC pairs the server-side heap field with
-                        # the response packet (client base size).
-                        "heapSize": binding.heap.response_bytes,
-                        "baseSize": resolved.request_base_size,
-                    },
-                    "client": {
-                        # Native PDU-RPC pairs the client-side heap field with
-                        # the request packet (server base size).
-                        "heapSize": binding.heap.request_bytes,
-                        "baseSize": resolved.response_base_size,
-                    },
+                "clientNamePrefix": (
+                    f"hakoniwa_pdu_ros_{service_key(binding.hakoniwa_service)}"
+                ),
+                "packetSize": {
+                    "requestBaseSize": resolved.request_base_size,
+                    "responseBaseSize": resolved.response_base_size,
                 },
-                "server_endpoints": server_endpoints,
-                "clients": clients,
+                "bufferHeap": {
+                    "requestSize": binding.heap.request_bytes,
+                    "responseSize": binding.heap.response_bytes,
+                },
+                "clientEndpoint": {
+                    "nodeId": binding.client_endpoint.node_id,
+                },
+                "serverEndpoint": {
+                    "nodeId": binding.server_endpoint.node_id,
+                },
             }
         )
-    return {"pduMetaDataSize": PDU_METADATA_SIZE, "services": entries}
+    return {"version": 1, "services": entries, "transport": transport}
 
 
-def _build_clients(binding: ServiceBinding, endpoint: EndpointRef) -> list[dict]:
-    key = service_key(binding.hakoniwa_service)
-    return [
-        {
-            "name": f"hakoniwa_pdu_ros_{key}_{index}",
-            "requestChannelId": 2 * index,
-            "responseChannelId": 2 * index + 1,
-            "client_endpoint": _endpoint_json(endpoint),
-        }
-        for index in range(binding.max_clients)
-    ]
-
-
-def _endpoint_json(endpoint: EndpointRef) -> dict:
-    return {"nodeId": endpoint.node_id, "endpointId": endpoint.endpoint_id}
+def _load_rpc_generator() -> Callable[[Path, Path], list[Path]]:
+    try:
+        from hakoniwa_pdu_rpc.service_config_generator import generate
+    except ModuleNotFoundError as error:
+        raise ValueError(
+            "hakoniwa-pdu-rpc with the installed Service generator is required"
+        ) from error
+    return generate
 
 
 def _resolve_offset_dir(value: str | Path | None) -> Path:
@@ -288,7 +284,7 @@ def _align8(value: int) -> int:
 
 
 def _write_json_atomic(path: Path, data: dict) -> None:
-    serialized = json.dumps(deepcopy(data), indent=2, ensure_ascii=False) + "\n"
+    serialized = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     temporary_path = None
     try:
         with tempfile.NamedTemporaryFile(

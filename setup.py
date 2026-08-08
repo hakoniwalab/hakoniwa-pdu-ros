@@ -56,15 +56,7 @@ setup(
             f"share/{package_name}/config/service",
             [
                 "config/service/add_two_ints.json",
-                "config/service/client-endpoint.json",
-                "config/service/rpc-endpoints.json",
-                "config/service/rpc-client-comm.json",
-                "config/service/rpc-pdudef.json",
-                "config/service/rpc-queue.json",
-                "config/service/rpc-server-comm.json",
-                "config/service/rpc-server-mux-comm.json",
-                "config/service/server-endpoint.json",
-                "config/service/server-mux-endpoint.json",
+                "config/service/add_two_ints-transport.json",
             ],
         ),
         (
@@ -122,6 +114,8 @@ setup(
         "console_scripts": [
             "bridge = hakoniwa_pdu_ros.__main__:main",
             "service-server = hakoniwa_pdu_ros.service_server_node:main",
+            "service-client = hakoniwa_pdu_ros.service_client_node:main",
+            "generate-service-config = hakoniwa_pdu_ros.generate_service_config:main",
             "action-server = hakoniwa_pdu_ros.action_server_node:main",
             "action-client = hakoniwa_pdu_ros.action_client_node:main",
             "generate-action-config = hakoniwa_pdu_ros.generate_action_config:main",

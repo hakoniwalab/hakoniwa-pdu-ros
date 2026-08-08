@@ -15,6 +15,7 @@ on:
       - "task-service-client.md"
       - "package.xml"
       - "setup.py"
+      - "setup.cfg"
       - ".github/workflows/native-integration.yml"
   pull_request:
     paths:
@@ -28,6 +29,7 @@ on:
       - "task-service-client.md"
       - "package.xml"
       - "setup.py"
+      - "setup.cfg"
       - ".github/workflows/native-integration.yml"
   workflow_dispatch:
 

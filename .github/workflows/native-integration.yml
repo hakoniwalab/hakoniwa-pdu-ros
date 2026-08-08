@@ -4,8 +4,11 @@ on:
   pull_request:
     paths:
       - "hakoniwa_pdu_ros/**"
+      - "config/action/**"
+      - "schema/action-binding.schema.json"
       - "test/native/**"
       - "test/docker/**"
+      - "task-action.md"
       - "package.xml"
       - "setup.py"
       - ".github/workflows/native-integration.yml"

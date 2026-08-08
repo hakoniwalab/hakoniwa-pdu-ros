@@ -1,9 +1,10 @@
 FROM ros:jazzy-ros-base-noble
 
 ARG HAKONIWA_PDU_ENDPOINT_REF=f2d7bc052f9afb93281477507206cc35bf284a62
-ARG HAKONIWA_PDU_RPC_REF=10eb9c8e7664691816796427b2cff68b61c13433
+ARG HAKONIWA_PDU_RPC_REF=9ee3482defb680d579930e6942af9a50cdce5d6e
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV CMAKE_BUILD_PARALLEL_LEVEL=2
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -12,6 +13,7 @@ RUN apt-get update \
         git \
         libboost-dev \
         python3-venv \
+        ros-jazzy-action-tutorials-interfaces \
         ros-jazzy-example-interfaces \
         ros-jazzy-rmw-cyclonedds-cpp \
         ros-jazzy-sensor-msgs \
@@ -38,7 +40,7 @@ RUN mkdir -p /opt/src/hakoniwa-pdu-endpoint \
         -DHAKO_PDU_ENDPOINT_BUILD_TOOLS=OFF \
         -DHAKO_PDU_ENDPOINT_BUILD_BENCHMARKS=OFF \
         -DHAKO_PDU_ENDPOINT_INSTALL=ON \
-    && cmake --build build --config Release --parallel \
+    && cmake --build build --config Release --parallel 2 \
     && cmake --install build --config Release --prefix /opt/hakoniwa-pdu-endpoint
 
 RUN mkdir -p /opt/src/hakoniwa-pdu-rpc \
@@ -48,8 +50,9 @@ RUN mkdir -p /opt/src/hakoniwa-pdu-rpc \
     && git fetch --depth 1 origin "${HAKONIWA_PDU_RPC_REF}" \
     && git checkout --detach FETCH_HEAD \
     && git submodule update --init --recursive --depth 1 \
-    && /opt/hakoniwa-pdu-ros-venv/bin/python tools/hako.py build \
+    && /opt/hakoniwa-pdu-ros-venv/bin/python tools/hako.py configure \
         --endpoint-root /opt/hakoniwa-pdu-endpoint \
+    && cmake --build build --config Release --parallel 2 \
     && /opt/hakoniwa-pdu-ros-venv/bin/python tools/hako.py install \
         --endpoint-root /opt/hakoniwa-pdu-endpoint \
         --install-dir /opt/hakoniwa-pdu-rpc
@@ -63,7 +66,7 @@ RUN /opt/hakoniwa-pdu-ros-venv/bin/python -m pip install -e /workspace \
 ENV PATH=/opt/hakoniwa-pdu-ros-venv/bin:${PATH} \
     HAKO_PDU_RPC_LIBRARY=/opt/hakoniwa-pdu-rpc/lib/libhakoniwa_pdu_rpc.so \
     LD_LIBRARY_PATH=/opt/hakoniwa-pdu-rpc/lib:/opt/hakoniwa-pdu-endpoint/lib \
-    PYTHONPATH=/opt/src/hakoniwa-pdu-rpc/python \
+    PYTHONPATH=/opt/src/hakoniwa-pdu-rpc/python:/opt/src/hakoniwa-pdu-rpc/hakoniwa-pdu-registry \
     RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     ROS_DOMAIN_ID=73 \
     PYTHONUNBUFFERED=1

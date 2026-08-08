@@ -1,0 +1,26 @@
+{
+  "$schema": "../../schema/action-binding.schema.json",
+  "version": 1,
+  "action": {
+    "transport_config": "fibonacci-transport.json",
+    "delta_time_usec": 1000,
+    "time_source_type": "real"
+  },
+  "bindings": [
+    {
+      "ros_name": "/fibonacci",
+      "ros_type": "action_tutorials_interfaces/action/Fibonacci",
+      "hakoniwa_action": "fibonacci",
+      "pdu_action_type": "sample_action_msgs/Fibonacci",
+      "client_endpoint": {"node_id": "fibonacci-client"},
+      "server_endpoint": {"node_id": "fibonacci-server"},
+      "slot_count": 4,
+      "goal_response_timeout_msec": 3000,
+      "heap": {
+        "goal_bytes": 1048576,
+        "result_bytes": 1048576,
+        "feedback_bytes": 1048576
+      }
+    }
+  ]
+}

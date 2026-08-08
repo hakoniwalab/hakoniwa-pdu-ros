@@ -96,7 +96,7 @@ Action Client は、利用者から見ると主に次の操作を行います。
 
 ```python
 from rclpy.action import ActionClient
-from example_interfaces.action import Fibonacci
+from action_tutorials_interfaces.action import Fibonacci
 
 self._client = ActionClient(
     self,
@@ -262,7 +262,7 @@ Action Server は、クライアントから送られた Goal を受け取り、
 
 ```python
 from rclpy.action import ActionServer
-from example_interfaces.action import Fibonacci
+from action_tutorials_interfaces.action import Fibonacci
 
 self._server = ActionServer(
     self,

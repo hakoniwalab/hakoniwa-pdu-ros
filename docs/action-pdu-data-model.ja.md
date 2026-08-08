@@ -193,11 +193,31 @@ goal_id
   Result
 ```
 
-ROS 2 と接続する場合は、ROS Goal UUID をそのまま保持できるよう 128 bit とします。
+ROS 2と接続する場合も、箱庭`goal_id`は箱庭Action ClientとなるBridgeが
+128 bit UUIDとして生成します。ROS Goal UUIDとは同一値を要求せず、Bridgeの
+Goal Contextで双方向に対応付けます。これにより、ROSがGoal Handleを生成する前に
+箱庭Action ServerへGoalを送り、そのACCEPT／REJECTをROS Goal Responseへ反映できます。
 
-箱庭ネイティブクライアントの場合は、クライアント側で同等の UUID を生成します。
+箱庭ネイティブクライアントの場合も、クライアント側で同等のUUIDを生成します。
 
 同一 `goal_id` で別の Goal を再投入することは許可しません。
+
+ROS BridgeはCancel要求をROS Goal UUIDから箱庭`goal_id`へ引き直し、同じ
+Goal Handleに対して箱庭Cancelを送信します。ROSのCancel応答は、箱庭の
+`CANCEL_RESPONSE`を受信してからACCEPT／REJECTへ変換します。Cancel要求より
+`SUCCEEDED`または`ABORTED` Resultが先に確定した場合はResultを優先し、ROSの
+Cancel要求はREJECTとします。
+
+箱庭側では`CANCEL_RESPONSE(ACCEPTED)`の送信直後に`RESULT(CANCELED)`を送信
+できます。一方、ROS 2はCancel callbackが`ACCEPT`を返した後にGoalHandleを
+`CANCELING`へ遷移させます。この短い実行時差分について、BridgeはCANCELED Resultを
+一時保留し、ROS GoalHandleの`is_cancel_requested`を確認してから配送します。
+これはAction状態機械の複製ではなく、両Runtimeの正しいWire順序をROS APIの
+状態遷移順序へ適合させるための配送境界です。
+
+Goal Response用timeoutはCancel Response待ちへ流用しません。ROS側だけtimeoutで
+REJECTした後に箱庭側でCancelが受理されると状態が分岐するためです。v1のBridgeは
+Cancel Response、先着Result、またはshutdownまで待機します。
 
 ## 7. Client ID を持たない理由
 

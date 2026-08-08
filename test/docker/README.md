@@ -9,9 +9,10 @@ This directory runs `hakoniwa-pdu-ros` against a real ROS 2 runtime instead of t
 - `rmw_cyclonedds_cpp`
 - real `rclpy` message classes
 - installed `example_interfaces/srv/AddTwoInts` IDL
+- installed `action_tutorials_interfaces/action/Fibonacci` IDL
 - PyPI `hakoniwa-pdu`
 - a pinned, Core-free `hakoniwa-pdu-endpoint` shared-library build
-- a pinned `hakoniwa-pdu-rpc` shared-library build with Typed `call_async()`
+- a pinned `hakoniwa-pdu-rpc` shared-library build with Typed RPC and Action APIs
 - the current `hakoniwa-pdu-ros` checkout installed in editable mode
 
 Tobas itself is intentionally not part of the test dependency. The QoS tests publish the same `sensor_msgs/msg/JointState` shape and use the same `BEST_EFFORT` reliability that exposed the Tobas integration failure.
@@ -55,7 +56,7 @@ The container runs two groups of tests:
    - verifies the server received the typed request and the client received `42`
 
 This fourth group deliberately contains no ROS Service Node. It establishes the
-Hakoniwa RPC baseline that the ROS Service Server Node tests will reuse next.
+Hakoniwa RPC baseline reused by the ROS Service Server Node tests.
 
 5. ROS Service Server Node E2E
    - starts the same reusable Hakoniwa AddTwoInts RPC server
@@ -72,6 +73,29 @@ Hakoniwa RPC baseline that the ROS Service Server Node tests will reuse next.
    - injects request and response conversion failures, verifies directional
      diagnostics, no synthesized response, lease release, and a later successful call
 
+6. ROS Action Server Node E2E
+   - generates the Hakoniwa Action runtime configuration from
+     `config/action/fibonacci.json`
+   - starts a real Hakoniwa Fibonacci Action Server over the CFFI/TCP runtime
+   - starts `HakoniwaRosActionServerNode`
+   - sends a Goal from a real ROS 2 `ActionClient`
+   - verifies Goal acceptance, ordered Feedback, a `SUCCEEDED` terminal status,
+     and the Fibonacci Result body
+   - verifies explicit Goal rejection and two consecutive Goals
+   - verifies accepted and rejected Cancel requests
+   - verifies a normal Result winning while Cancel is pending
+   - keeps four Goals active and verifies the fifth is rejected when all slots
+     are occupied
+   - verifies a missing Hakoniwa Goal Response becomes ROS Goal rejection at
+     the configured timeout
+
+The canonical ROS type is
+`action_tutorials_interfaces/action/Fibonacci`. Its Feedback field
+`partial_sequence` matches the generated
+`sample_action_msgs/Fibonacci` PDU contract. The similarly named
+`example_interfaces/action/Fibonacci` uses a different Feedback field and is
+therefore not interchangeable.
+
 For the equivalent user-observable three-process walkthrough, see
 [`examples/service/README.md`](../../examples/service/README.md).
 
@@ -81,6 +105,12 @@ the same behavior with real parallel TCP connections.
 
 The Endpoint and RPC source revisions are pinned by Docker build arguments in
 `Dockerfile`. Update those arguments intentionally when adopting a newer
-dependency contract.
+dependency contract. The RPC build is explicitly limited to two parallel jobs
+so the Action-enabled build remains reproducible on Docker Desktop ARM hosts.
+
+Until `sample_action_msgs` is included in a released `hakoniwa-pdu` wheel, the
+Action E2E resolves that generated package from the pinned RPC repository's
+Registry submodule. This is a test-environment bridge, not the final
+user-install contract; remove it after the wheel contains the Action package.
 
 Every graph test has an explicit timeout and destroys all nodes and executors before returning.

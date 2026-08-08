@@ -89,6 +89,16 @@ Hakoniwa RPC baseline reused by the ROS Service Server Node tests.
    - verifies a missing Hakoniwa Goal Response becomes ROS Goal rejection at
      the configured timeout
 
+7. ROS Action Client Node E2E
+   - starts a real ROS 2 Fibonacci Action Server
+   - starts `HakoniwaRosActionClientNode` with the generated shared Action
+     configuration
+   - sends Goals from a real Hakoniwa Typed Action Client over TCP
+   - verifies Goal acceptance and rejection, ordered Feedback, and a
+     `SUCCEEDED` or `ABORTED` Result body
+   - verifies accepted Cancel followed by a `CANCELED` Result
+   - verifies rejected Cancel followed by normal Goal completion
+
 The canonical ROS type is
 `action_tutorials_interfaces/action/Fibonacci`. Its Feedback field
 `partial_sequence` matches the generated

@@ -1,10 +1,10 @@
-# ROS 2 Action Server Bridge実装タスク
+# ROS 2 Action Bridge実装タスク
 
 ## 1. この文書の目的
 
 `hakoniwa-pdu-ros`へROS 2 Action Bridgeを追加するため、ユーザー境界、設定生成、Runtime責務、実装順序、Docker検証条件を一か所で管理する。
 
-最初の対象は、箱庭側にAction Serverが存在し、ROS 2側へAction Serverとして公開する方向である。
+最初の対象は、箱庭側にAction Serverが存在し、ROS 2側へAction Serverとして公開する方向である。次フェーズとして逆方向のAction Client Bridgeを実装する。
 
 ```text
 ROS 2 Action Client
@@ -19,7 +19,7 @@ hakoniwa-pdu-rpc ActionClient  Hakoniwa Action Client
 Hakoniwa Action Server
 ```
 
-逆方向は次の独立ステップとする。
+逆方向は次の独立フェーズとする。
 
 ```text
 ROS 2 Action Server
@@ -53,9 +53,8 @@ Hakoniwa Action Client
 - shutdownとactive Goal cleanup
 - Docker上のROS 2／Hakoniwa Action E2E
 
-初期Runtime実装へ混在させない。
+Server側の初期Runtime実装へ混在させない。
 
-- `HakoniwaRosActionClientNode`の逆方向Bridge実装。Binding Schemaとloaderは先に対応する
 - Topic BridgeまたはService Bridgeとの統合Node
 - ROS 2 bulk Cancelを箱庭Protocolへ直接追加すること
 - ROS 2固有状態を`hakoniwa-pdu-rpc`の状態機械へ追加すること
@@ -384,6 +383,53 @@ shutdown時は待機を解除して`REJECT`する。Transport切断後の状態�
 - NOP、duplicate、late eventを成功イベントとしてROSへ再配送しない
 - 同期失敗とProtocol eventを構造化ログで区別する
 
+### 8.2 Action Client Bridge
+
+`HakoniwaRosActionClientNode`は箱庭側へAction Serverを公開し、ROS 2側では
+Action Clientとして動作する。
+
+```text
+Hakoniwa Action Client
+  -> hakoniwa-pdu-rpc Typed Action Server
+  -> HakoniwaRosActionClientNode
+  -> ROS 2 Action Client
+  -> ROS 2 Action Server
+```
+
+基本フロー:
+
+```text
+Hakoniwa GOAL_REQUEST
+  -> typed Goal bodyをROS Goalへ変換
+  -> ROS send_goal_async
+  -> ROS ACCEPT／REJECTをHakoniwa Goal Responseへ反映
+  -> ROS Feedbackをtyped Hakoniwa Feedbackへ変換して送信
+  -> ROS terminal statusとResultをHakoniwa Resultへ変換して送信
+```
+
+Cancel:
+
+```text
+Hakoniwa CANCEL_REQUEST
+  -> 対応するROS ClientGoalHandleを検索
+  -> ROS cancel_goal_async
+  -> ROS Cancel結果をHakoniwa Cancel Responseへ反映
+  -> ROS terminal ResultをHakoniwa Resultへ反映
+```
+
+方向を追加してもBinding Schema、生成済みAction manifest、Transport設定は変更しない。
+Client Nodeは`server_endpoint`を使用する。Goal IDは箱庭Action Clientが生成した
+`goal_id`を相関の正として保持し、ROS側が返すClientGoalHandleと対応付ける。
+
+body変換とpacket境界は次の責務に分ける。
+
+- `hakoniwa-pdu-rpc`: Typed Action Server、Header、packet encode/decode、buffer
+- `hakoniwa-pdu-ros`: typed Goal／Feedback／Result bodyとROS messageの変換
+
+ROS Bridgeがraw Action packetを直接decode／encodeする実装は採用しない。
+`hakoniwa-pdu-rpc` #74で複数Action対応`TypedActionServer`がmainへ統合された。
+Client BridgeはこのAPIを利用し、raw packet、Header、slot管理をROS側へ複製しない。
+
 ## 9. Dockerテスト環境
 
 macOS host上のROS依存を避け、既存native Docker test基盤を拡張する。
@@ -437,6 +483,8 @@ Docker E2Eは成功結果だけでなく、Goal accept／reject、Feedback、Can
 
 ## 10. 実装順序
 
+### 10.1 Action Server Bridge
+
 - [x] 最新`hakoniwa-pdu-rpc` Action契約とROS側文書の差分を整理する
 - [x] 方向非依存Action Binding fieldを確定する
 - [x] `schema/action-binding.schema.json`を追加する
@@ -462,6 +510,24 @@ Docker E2Eは成功結果だけでなく、Goal accept／reject、Feedback、Can
 - [ ] README、Action設計文書、package data、console scriptを更新する
 - [ ] `hako.py`のbuild／test／install契約へ統合する
 - [ ] Business Packへ統合可能な生成先・起動契約を確認する
+
+### 10.2 Action Client Bridge
+
+- [x] 逆方向の責務境界とGoal／Cancelフローを定義する
+- [x] Bindingと生成物をServer／Client方向で共用することを確認する
+- [x] `hakoniwa-pdu-rpc`へ複数Action対応`TypedActionServer`を追加する（hakoniwa-pdu-rpc#74）
+- [x] typed Goal／Feedback／Resultの逆方向mapperを追加する
+- [x] `HakoniwaRosActionClientNode`のGoal accept／rejectを実装する
+- [x] Feedbackと`SUCCEEDED`／`ABORTED` Resultを実装する
+- [x] 単一Goal Cancelと`CANCELED` Resultを実装する
+- [x] component testを追加する
+- [x] ROS Fibonacci Action Server fixtureを追加する
+- [x] Docker正常系E2Eを追加する
+- [x] `ABORTED` Resultの実TCP E2Eを追加する
+- [x] 複数Goalと複数Action Bindingの相関をcomponent testで固定する
+- [x] active GoalとEndpointのshutdown cleanupをcomponent testで固定する
+- [x] `action-client` console scriptと利用手順を追加する
+- [ ] `hako.py test`のreviewed Action Bridge testへ統合する
 
 ## 11. 完了条件
 

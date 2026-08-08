@@ -123,6 +123,7 @@ setup(
             "bridge = hakoniwa_pdu_ros.__main__:main",
             "service-server = hakoniwa_pdu_ros.service_server_node:main",
             "action-server = hakoniwa_pdu_ros.action_server_node:main",
+            "action-client = hakoniwa_pdu_ros.action_client_node:main",
             "generate-action-config = hakoniwa_pdu_ros.generate_action_config:main",
         ],
     },

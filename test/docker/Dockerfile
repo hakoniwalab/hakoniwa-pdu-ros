@@ -1,8 +1,5 @@
 FROM ros:jazzy-ros-base-noble
 
-ARG HAKONIWA_PDU_ENDPOINT_REF=f2d7bc052f9afb93281477507206cc35bf284a62
-ARG HAKONIWA_PDU_RPC_REF=9ee3482defb680d579930e6942af9a50cdce5d6e
-
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CMAKE_BUILD_PARALLEL_LEVEL=2
 
@@ -24,6 +21,8 @@ RUN python3 -m venv --system-site-packages /opt/hakoniwa-pdu-ros-venv \
     && /opt/hakoniwa-pdu-ros-venv/bin/python -m pip install --upgrade pip "setuptools<80" wheel \
     && /opt/hakoniwa-pdu-ros-venv/bin/python -m pip install cffi pytest hakoniwa-pdu
 
+ARG HAKONIWA_PDU_ENDPOINT_REF=f2d7bc052f9afb93281477507206cc35bf284a62
+
 RUN mkdir -p /opt/src/hakoniwa-pdu-endpoint \
     && cd /opt/src/hakoniwa-pdu-endpoint \
     && git init \
@@ -42,6 +41,8 @@ RUN mkdir -p /opt/src/hakoniwa-pdu-endpoint \
         -DHAKO_PDU_ENDPOINT_INSTALL=ON \
     && cmake --build build --config Release --parallel 2 \
     && cmake --install build --config Release --prefix /opt/hakoniwa-pdu-endpoint
+
+ARG HAKONIWA_PDU_RPC_REF=095b770af627b78446dbac70fdb8eab87aee9d2c
 
 RUN mkdir -p /opt/src/hakoniwa-pdu-rpc \
     && cd /opt/src/hakoniwa-pdu-rpc \

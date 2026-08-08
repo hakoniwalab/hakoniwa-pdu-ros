@@ -7,6 +7,7 @@ import pytest
 
 from hakoniwa_pdu_ros.action_mapping import (
     ActionConversionError,
+    RosActionClientTypeMapper,
     RosActionServerTypeMapper,
     RosGoalTerminalAction,
     goal_id_from_ros,
@@ -31,6 +32,16 @@ class Result:
 
 def mapper() -> RosActionServerTypeMapper:
     return RosActionServerTypeMapper(
+        ros_type="sample_action_msgs/action/Fibonacci",
+        pdu_type="sample_action_msgs/Fibonacci",
+        ros_goal_type=Goal,
+        ros_feedback_type=Feedback,
+        ros_result_type=Result,
+    )
+
+
+def client_mapper() -> RosActionClientTypeMapper:
+    return RosActionClientTypeMapper(
         ros_type="sample_action_msgs/action/Fibonacci",
         pdu_type="sample_action_msgs/Fibonacci",
         ros_goal_type=Goal,
@@ -72,6 +83,24 @@ def test_feedback_and_result_map_typed_bodies_without_packet_knowledge() -> None
 
     assert feedback.partial_sequence == [1, 1, 2]
     assert result.sequence == [0, 1, 1, 2, 3]
+
+
+def test_client_mapper_maps_goal_feedback_and_result_in_reverse_direction() -> None:
+    support = client_mapper()
+
+    ros_goal = support.goal_to_ros(SimpleNamespace(order=10))
+    typed_feedback = support.feedback_to_typed(
+        SimpleNamespace(partial_sequence=[1, 1, 2]),
+        SimpleNamespace(partial_sequence=[]),
+    )
+    typed_result = support.result_to_typed(
+        SimpleNamespace(sequence=[0, 1, 1, 2, 3]),
+        SimpleNamespace(sequence=[]),
+    )
+
+    assert ros_goal.order == 10
+    assert typed_feedback.partial_sequence == [1, 1, 2]
+    assert typed_result.sequence == [0, 1, 1, 2, 3]
 
 
 def test_conversion_failure_contains_direction_and_types(monkeypatch) -> None:

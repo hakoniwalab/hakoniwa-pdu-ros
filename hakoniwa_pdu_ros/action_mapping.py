@@ -115,6 +115,74 @@ class RosActionServerTypeMapper:
             ) from error
 
 
+@dataclass(frozen=True)
+class RosActionClientTypeMapper:
+    """Map typed PDU Action bodies to ROS Action Client messages.
+
+    Packet allocation, headers and wire conversion stay inside
+    ``hakoniwa-pdu-rpc.TypedActionServer``.  This mapper owns only the
+    application body conversion at the ROS boundary.
+    """
+
+    ros_type: str
+    pdu_type: str
+    ros_goal_type: type
+    ros_feedback_type: type
+    ros_result_type: type
+    ros_action_type: type | None = None
+
+    @classmethod
+    def load(cls, ros_type: str, pdu_type: str) -> "RosActionClientTypeMapper":
+        support = RosActionServerTypeMapper.load(ros_type, pdu_type)
+        return cls(
+            ros_type=support.ros_type,
+            pdu_type=support.pdu_type,
+            ros_goal_type=support.ros_goal_type,
+            ros_feedback_type=support.ros_feedback_type,
+            ros_result_type=support.ros_result_type,
+            ros_action_type=support.ros_action_type,
+        )
+
+    def goal_to_ros(self, typed_goal: object) -> object:
+        return self._copy(
+            typed_goal,
+            self.ros_goal_type(),
+            direction="typed_pdu_goal_to_ros",
+        )
+
+    def feedback_to_typed(
+        self,
+        ros_feedback: object,
+        typed_feedback: object,
+    ) -> object:
+        return self._copy(
+            ros_feedback,
+            typed_feedback,
+            direction="ros_feedback_to_typed_pdu",
+        )
+
+    def result_to_typed(
+        self,
+        ros_result: object,
+        typed_result: object,
+    ) -> object:
+        return self._copy(
+            ros_result,
+            typed_result,
+            direction="ros_result_to_typed_pdu",
+        )
+
+    def _copy(self, source: object, target: object, *, direction: str) -> object:
+        try:
+            return copy_matching_fields(source, target)
+        except BaseException as error:
+            raise ActionConversionError(
+                direction=direction,
+                ros_type=self.ros_type,
+                pdu_type=self.pdu_type,
+                cause=error,
+            ) from error
+
 def goal_id_from_ros(goal_id: object) -> bytes:
     """Convert a ROS UUID message (or its sequence) to a native Goal ID."""
 

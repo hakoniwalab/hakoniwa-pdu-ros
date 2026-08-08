@@ -260,6 +260,64 @@ request/response変換エラーについても、変換方向とservice識別情
 RPC Server、Service Bridge、`ros2 service call`を三つのターミナルで個別に起動して観測するには、
 [ROS Service手動デモ](examples/service/README.ja.md)を参照してください。
 
+## ROS Action Bridge
+
+Action Bridgeは方向を持たない一つのBindingを、両方向のRuntimeで共用します。
+entry point名はROS側から見た役割を表します。
+
+| entry point | ROS側の役割 | Hakoniwa PDU-RPC側の役割 | 使用Endpoint |
+| --- | --- | --- | --- |
+| `action-server` | Action Server | Typed Action Client | `client_endpoint` |
+| `action-client` | Action Client | Typed Action Server | `server_endpoint` |
+
+正本となるSchemaとFibonacci例は次のとおりです。
+
+- `schema/action-binding.schema.json`
+- `config/action/fibonacci.json`
+- `config/action/fibonacci-transport.json`
+- [`task-action.md`](task-action.md)
+
+共通のHakoniwa Action Runtime設定を一度生成します。
+
+```bash
+python3 -m hakoniwa_pdu_ros.generate_action_config \
+  --config config/action/fibonacci.json \
+  --output-dir build/generated/action/fibonacci
+```
+
+同じBindingと生成物を、どちらの方向でも利用できます。
+
+```bash
+# Hakoniwa Action ServerをROS 2 Action Serverとして公開する。
+action-server \
+  --config config/action/fibonacci.json \
+  --output-dir build/generated/action/fibonacci \
+  --rpc-library /path/to/libhakoniwa_pdu_rpc.so
+
+# Hakoniwa Action ClientからROS 2 Action Serverへ接続する。
+action-client \
+  --config config/action/fibonacci.json \
+  --output-dir build/generated/action/fibonacci \
+  --rpc-library /path/to/libhakoniwa_pdu_rpc.so
+```
+
+`--rpc-library`省略時は`HAKO_PDU_RPC_LIBRARY`を使用します。
+`--output-dir`省略時は`build/generated/action/<binding-id>`へ生成します。
+Business Pack Recipeから使う場合は、Recipe-localなconfigディレクトリを明示します。
+
+ユーザーが指定するのは意味的なBindingとTransportの2ファイルだけです。channel ID、
+packet名、slot routing、解決済みAction Runtime設定はPDU-RPCのgenerator契約で生成します。
+raw packet、Header、slot、Protocol状態は`hakoniwa-pdu-rpc`内に閉じ、ROS側ではtypedな
+Goal／Feedback／Result bodyの変換と、双方のGoal Handleの相関だけを担当します。
+
+Docker native testは実TCPを使って両方向を検証します。Action Client Bridge方向では
+ROS Fibonacci Action Serverを起動し、Hakoniwa Goalのaccept／reject、Feedback、
+terminal Result、Cancelのaccept／rejectを確認します。
+
+```bash
+bash test/docker/run_native_tests.sh
+```
+
 ## Verified Coverage
 
 まずは標準 ROS message を常設テスト対象にしています。ここが通れば、

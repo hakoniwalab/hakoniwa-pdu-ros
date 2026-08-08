@@ -1,16 +1,35 @@
 name: Native integration
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "hakoniwa_pdu_ros/**"
+      - "config/action/**"
+      - "config/service/**"
+      - "schema/action-binding.schema.json"
+      - "schema/service-binding.schema.json"
+      - "test/**"
+      - "task-action.md"
+      - "task-service-client.md"
+      - "package.xml"
+      - "setup.py"
+      - "setup.cfg"
+      - ".github/workflows/native-integration.yml"
   pull_request:
     paths:
       - "hakoniwa_pdu_ros/**"
       - "config/action/**"
+      - "config/service/**"
       - "schema/action-binding.schema.json"
-      - "test/native/**"
-      - "test/docker/**"
+      - "schema/service-binding.schema.json"
+      - "test/**"
       - "task-action.md"
+      - "task-service-client.md"
       - "package.xml"
       - "setup.py"
+      - "setup.cfg"
       - ".github/workflows/native-integration.yml"
   workflow_dispatch:
 

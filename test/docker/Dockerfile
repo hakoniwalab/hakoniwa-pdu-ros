@@ -42,7 +42,7 @@ RUN mkdir -p /opt/src/hakoniwa-pdu-endpoint \
     && cmake --build build --config Release --parallel 2 \
     && cmake --install build --config Release --prefix /opt/hakoniwa-pdu-endpoint
 
-ARG HAKONIWA_PDU_RPC_REF=095b770af627b78446dbac70fdb8eab87aee9d2c
+ARG HAKONIWA_PDU_RPC_REF=14c861e29936dc78acc98756fbc3776b89809d71
 
 RUN mkdir -p /opt/src/hakoniwa-pdu-rpc \
     && cd /opt/src/hakoniwa-pdu-rpc \

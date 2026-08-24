@@ -136,3 +136,63 @@ def test_subscription_uses_resolved_qos_and_diagnostic_callback(monkeypatch) -> 
         types.SimpleNamespace(last_policy_kind=4)
     )
     assert "incompatible publisher QoS" in logger.warnings[0]
+
+
+def test_subscription_works_without_event_callbacks_on_humble(monkeypatch) -> None:
+    rclpy = types.ModuleType("rclpy")
+    rclpy_node = types.ModuleType("rclpy.node")
+    rclpy_node.Node = object
+    rclpy_qos = types.ModuleType("rclpy.qos")
+    rclpy_qos.HistoryPolicy = _Policy
+    rclpy_qos.ReliabilityPolicy = _Policy
+    rclpy_qos.DurabilityPolicy = _Policy
+    rclpy_qos.QoSProfile = _QoSProfile
+
+    endpoint_module = types.ModuleType("hakoniwa_pdu_ros.pdu_endpoint")
+    endpoint_module.PduEndpointManager = object
+    mapper_module = types.ModuleType("hakoniwa_pdu_ros.type_mapper")
+    mapper_module.import_ros_msg_class = lambda _: object
+    mapper_module.pdu_bytes_to_ros_msg = lambda *_: object()
+    mapper_module.ros_msg_to_pdu_bytes = lambda *_: b"pdu"
+    mapper_module.validate_pdu_converter = lambda _: None
+    zenoh_module = types.ModuleType("hakoniwa_pdu_ros.zenoh_io")
+    zenoh_module.validate_zenoh_io_for_config = lambda _: None
+
+    monkeypatch.setitem(sys.modules, "rclpy", rclpy)
+    monkeypatch.delitem(sys.modules, "rclpy.event_handler", raising=False)
+    monkeypatch.setitem(sys.modules, "rclpy.node", rclpy_node)
+    monkeypatch.setitem(sys.modules, "rclpy.qos", rclpy_qos)
+    monkeypatch.setitem(sys.modules, "hakoniwa_pdu_ros.pdu_endpoint", endpoint_module)
+    monkeypatch.setitem(sys.modules, "hakoniwa_pdu_ros.type_mapper", mapper_module)
+    monkeypatch.setitem(sys.modules, "hakoniwa_pdu_ros.zenoh_io", zenoh_module)
+    monkeypatch.delitem(sys.modules, "hakoniwa_pdu_ros.bridge_node", raising=False)
+    bridge_node = importlib.import_module("hakoniwa_pdu_ros.bridge_node")
+
+    node = bridge_node.HakoniwaRosBridgeNode.__new__(
+        bridge_node.HakoniwaRosBridgeNode
+    )
+    logger = _Logger()
+    node._manager = types.SimpleNamespace(send=lambda *_: None)
+    node.get_logger = lambda: logger
+    captured: dict[str, object] = {}
+
+    def _create_subscription(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    node.create_subscription = _create_subscription
+    binding = BindingConfig(
+        direction="ros_to_pdu",
+        pdu_key=PduKeyConfig(robot_name="SO101", pdu_name="joint_trajectory"),
+        topic="/joint_trajectory",
+        channel_id=1,
+        pdu_size=4096,
+        pdu_type="trajectory_msgs/JointTrajectory",
+        qos=QosConfig(),
+    )
+
+    node._setup_out_binding(binding)
+
+    assert "event_callbacks" not in captured["kwargs"]
+    assert "subscription QoS for /joint_trajectory" in logger.infos[0]

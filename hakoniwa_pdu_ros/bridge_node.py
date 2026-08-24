@@ -1,5 +1,8 @@
 import rclpy
-from rclpy.event_handler import SubscriptionEventCallbacks
+try:
+    from rclpy.event_handler import SubscriptionEventCallbacks
+except ImportError:  # ROS 2 Humble does not expose subscription event callbacks.
+    SubscriptionEventCallbacks = None
 from rclpy.node import Node
 
 from hakoniwa_pdu_ros.config_loader import BindingConfig, BindingRootConfig, load_config
@@ -77,19 +80,22 @@ class HakoniwaRosBridgeNode(Node):
                 data,
             )
 
-        event_callbacks = SubscriptionEventCallbacks(
-            incompatible_qos=make_incompatible_qos_callback(
-                self.get_logger().warning,
-                binding.topic,
-                binding.qos,
+        subscription_options = {}
+        if SubscriptionEventCallbacks is not None:
+            subscription_options["event_callbacks"] = SubscriptionEventCallbacks(
+                incompatible_qos=make_incompatible_qos_callback(
+                    self.get_logger().warning,
+                    binding.topic,
+                    binding.qos,
+                )
             )
-        )
+
         self.create_subscription(
             msg_cls,
             binding.topic,
             _on_msg,
             qos_profile,
-            event_callbacks=event_callbacks,
+            **subscription_options,
         )
         self.get_logger().info(
             f"subscription QoS for {binding.topic}: {describe_qos(binding.qos)}"

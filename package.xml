@@ -4,7 +4,7 @@
   <version>0.1.0</version>
   <description>ROS 2 bridge package for Hakoniwa PDU endpoints.</description>
   <maintainer email="tmori@hakoniwa-lab.net">tmori</maintainer>
-  <license>Apache-2.0</license>
+  <license>MIT</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
 

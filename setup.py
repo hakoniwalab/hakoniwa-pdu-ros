@@ -108,7 +108,7 @@ setup(
     maintainer="tmori",
     maintainer_email="tmori@example.com",
     description="ROS 2 bridge package for Hakoniwa PDU endpoints.",
-    license="Apache-2.0",
+    license="MIT",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [

@@ -82,6 +82,16 @@ def _copy_matching_fields(src: object, dst: object) -> None:
     for name in field_names:
         src_value = getattr(src, name)
         dst_value = getattr(dst, name, None)
+        # A ROS byte[] (sequence<octet>) only serialises correctly when its
+        # elements are bytes-like; a list of ints is accepted, reads back
+        # identical, and then serialises as all-0xff. Normalise on whichever
+        # side declares the field as octet, before anything else looks at it.
+        if _is_octet_sequence_field(dst, name):
+            setattr(dst, name, _as_octet_bytes(src_value, name))
+            continue
+        if _is_octet_sequence_field(src, name):
+            setattr(dst, name, _as_octet_ints(src_value, name))
+            continue
         if isinstance(src_value, (bytes, bytearray)):
             decoded = _decode_binary_sequence(dst, name, src_value)
             if decoded is not None:
@@ -101,6 +111,59 @@ def _copy_matching_fields(src: object, dst: object) -> None:
                 setattr(dst, name, src_value)
             else:
                 _copy_matching_fields(src_value, dst_value)
+
+
+def _is_octet_sequence_field(obj: object, field_name: str) -> bool:
+    """True when ``obj`` declares ``field_name`` as a ROS byte[] field.
+
+    ROS `byte[]` is `sequence<octet>` in IDL. rclpy accepts a list of ints for
+    such a field and reads it back unchanged, but serialises every element as
+    0xff; only bytes-like elements survive. Measured on Jazzy with rclpy
+    7.1.11 / rosidl-generator-py 0.22.2, with and without DDS.
+    """
+    field_type = _field_type_name(obj, field_name)
+    if field_type is None:
+        return False
+    return _primitive_sequence_type(field_type) == "octet"
+
+
+def _as_octet_bytes(value, field_name: str) -> bytes:
+    """Normalise any accepted byte-sequence shape to ``bytes``."""
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytes(value)
+    out = bytearray()
+    for element in value:
+        if isinstance(element, (bytes, bytearray)):
+            out.extend(element)
+            continue
+        number = int(element)
+        if not 0 <= number <= 255:
+            # Deliberately loud. rclpy renders an out-of-range value as 0xff,
+            # exactly like the bug this normalisation exists to prevent, so
+            # masking here would make a real error indistinguishable from it.
+            raise ValueError(
+                f"byte[] field '{field_name}' element out of range: {number}"
+            )
+        out.append(number)
+    return bytes(out)
+
+
+def _as_octet_ints(value, field_name: str) -> list:
+    """Normalise any accepted byte-sequence shape to a list of ints."""
+    out: list[int] = []
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return list(value)
+    for element in value:
+        if isinstance(element, (bytes, bytearray)):
+            out.extend(element)
+            continue
+        number = int(element)
+        if not 0 <= number <= 255:
+            raise ValueError(
+                f"byte[] field '{field_name}' element out of range: {number}"
+            )
+        out.append(number)
+    return out
 
 
 def _copy_list(src_list, dst_parent: object, field_name: str, dst_list: object) -> list:
@@ -130,13 +193,35 @@ def _copy_list(src_list, dst_parent: object, field_name: str, dst_list: object) 
 def _list_item_type(dst_parent: object, field_name: str):
     annotations = getattr(dst_parent.__class__, "__annotations__", {})
     field_type = annotations.get(field_name)
-    if field_type is None:
+    if field_type is not None:
+        origin = get_origin(field_type)
+        if origin in {list, tuple}:
+            args = get_args(field_type)
+            if args:
+                return args[0]
         return None
-    origin = get_origin(field_type)
-    if origin not in {list, tuple}:
+    # ROS message classes leave __annotations__ empty and declare their fields
+    # through get_fields_and_field_types() instead, so the path above always
+    # returns None for them. Without this second lookup a nested message list
+    # is filled with objects of the SOURCE type: the ROS message ends up
+    # holding PDU objects, rosidl duck-types its way through serialisation,
+    # and any destination-type-aware handling never gets a chance to run --
+    # byte[] being the case that bites, since a PDU object hands it a list of
+    # ints. Measured 2026-09-11 with tobas_mission_msgs/Mission, whose
+    # __annotations__ is {} while get_fields_and_field_types() reports
+    # {'items': 'sequence<tobas_mission_msgs/MissionItem>'}.
+    declared = _field_type_name(dst_parent, field_name)
+    if declared is None:
         return None
-    args = get_args(field_type)
-    return args[0] if args else None
+    inner = _primitive_sequence_type(declared)
+    if inner is None or "/" not in inner:
+        return None
+    package_name, _, message_name = inner.partition("/")
+    try:
+        module = importlib.import_module(f"{package_name}.msg")
+    except ModuleNotFoundError:
+        return None
+    return getattr(module, message_name, None)
 
 
 def _decode_binary_sequence(dst_parent: object, field_name: str, raw: bytes | bytearray):

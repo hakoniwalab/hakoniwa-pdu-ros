@@ -40,7 +40,12 @@ RUN mkdir -p /opt/src/hakoniwa-pdu-endpoint \
         -DHAKO_PDU_ENDPOINT_BUILD_BENCHMARKS=OFF \
         -DHAKO_PDU_ENDPOINT_INSTALL=ON \
     && cmake --build build --config Release --parallel 2 \
-    && cmake --install build --config Release --prefix /opt/hakoniwa-pdu-endpoint
+    && cmake --install build --config Release --prefix /opt/hakoniwa-pdu-endpoint \
+    && HAKO_PDU_ENDPOINT_LIB_DIR=/opt/hakoniwa-pdu-endpoint/lib \
+       HAKO_PDU_ENDPOINT_SHARED_LIB=/opt/hakoniwa-pdu-endpoint/lib/libhakoniwa_pdu_endpoint.so \
+       HAKO_PDU_ENDPOINT_PYTHON_BUILD_DIR=/opt/src/hakoniwa-pdu-endpoint/build/python \
+       /opt/hakoniwa-pdu-ros-venv/bin/python \
+       /opt/src/hakoniwa-pdu-endpoint/python/hakoniwa_pdu_endpoint/build_c_endpoint_ffi.py
 
 ARG HAKONIWA_PDU_RPC_REF=14c861e29936dc78acc98756fbc3776b89809d71
 
@@ -65,9 +70,12 @@ RUN /opt/hakoniwa-pdu-ros-venv/bin/python -m pip install -e /workspace \
     && /opt/hakoniwa-pdu-ros-venv/bin/python -c "import hakoniwa_pdu_ros; print(hakoniwa_pdu_ros.__file__)"
 
 ENV PATH=/opt/hakoniwa-pdu-ros-venv/bin:${PATH} \
+    HAKONIWA_PDU_ENDPOINT_PYTHON_PATH=/opt/src/hakoniwa-pdu-endpoint/build/python \
+    HAKO_PDU_ENDPOINT_LIB_DIR=/opt/hakoniwa-pdu-endpoint/lib \
+    HAKO_PDU_ENDPOINT_SHARED_LIB=/opt/hakoniwa-pdu-endpoint/lib/libhakoniwa_pdu_endpoint.so \
     HAKO_PDU_RPC_LIBRARY=/opt/hakoniwa-pdu-rpc/lib/libhakoniwa_pdu_rpc.so \
     LD_LIBRARY_PATH=/opt/hakoniwa-pdu-rpc/lib:/opt/hakoniwa-pdu-endpoint/lib \
-    PYTHONPATH=/opt/src/hakoniwa-pdu-rpc/python:/opt/src/hakoniwa-pdu-rpc/hakoniwa-pdu-registry \
+    PYTHONPATH=/opt/src/hakoniwa-pdu-endpoint/python:/opt/src/hakoniwa-pdu-endpoint/build/python:/opt/src/hakoniwa-pdu-rpc/python:/opt/src/hakoniwa-pdu-rpc/hakoniwa-pdu-registry \
     RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     ROS_DOMAIN_ID=73 \
     PYTHONUNBUFFERED=1

@@ -4,7 +4,7 @@ try:
 except ImportError:  # ROS 2 Humble does not expose subscription event callbacks.
     SubscriptionEventCallbacks = None
 from rclpy.node import Node
-from rclpy.signals import uninstall_signal_handlers
+from rclpy.signals import SignalHandlerOptions
 
 from hakoniwa_pdu_ros.config_loader import BindingConfig, BindingRootConfig, load_config
 from hakoniwa_pdu_ros.pdu_endpoint import PduEndpointManager
@@ -107,11 +107,9 @@ def run(config_path: str | None = None) -> None:
     if config_path:
         validate_zenoh_io_for_config(config_path)
 
-    # rclpy installs signal handlers during init. Restore the process's previous
-    # handlers immediately so Ctrl+C becomes KeyboardInterrupt and this bridge
-    # owns teardown ordering: Endpoint dispatch -> ROS node -> ROS context.
-    rclpy.init()
-    uninstall_signal_handlers()
+    # Keep Python's SIGINT handler so Ctrl+C becomes KeyboardInterrupt and this
+    # bridge owns teardown ordering: Endpoint dispatch -> ROS node -> ROS context.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
     node = None
     try:
         config = load_config(config_path) if config_path else None

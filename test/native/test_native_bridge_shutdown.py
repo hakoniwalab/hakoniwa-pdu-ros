@@ -7,6 +7,16 @@ import textwrap
 import time
 
 
+def _subprocess_environment() -> dict[str, str]:
+    env = os.environ.copy()
+    python_paths = [path for path in sys.path if path]
+    inherited_python_path = env.get("PYTHONPATH")
+    if inherited_python_path:
+        python_paths.extend(inherited_python_path.split(os.pathsep))
+    env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(python_paths))
+    return env
+
+
 def test_bridge_ctrl_c_stops_endpoint_before_ros_shutdown():
     script = textwrap.dedent(
         """
@@ -24,7 +34,7 @@ def test_bridge_ctrl_c_stops_endpoint_before_ros_shutdown():
                 pass
 
             def start(self):
-                print("READY", flush=True)
+                pass
 
             def stop(self):
                 if not rclpy.ok():
@@ -33,9 +43,21 @@ def test_bridge_ctrl_c_stops_endpoint_before_ros_shutdown():
                 print("STOP_BEFORE_ROS_SHUTDOWN", flush=True)
 
 
+        def spin_after_ready(node):
+            executor = rclpy.get_global_executor()
+            try:
+                executor.add_node(node)
+                print("READY", flush=True)
+                while executor.context.ok():
+                    executor.spin_once()
+            finally:
+                executor.remove_node(node)
+
+
         bridge_node.validate_zenoh_io_for_config = lambda _path: None
         bridge_node.load_config = lambda _path: Config()
         bridge_node.PduEndpointManager = FakeEndpointManager
+        bridge_node.rclpy.spin = spin_after_ready
 
         bridge_node.run("unused-binding.json")
         print(f"FINAL_RCLPY_OK={rclpy.ok()}", flush=True)
@@ -47,6 +69,7 @@ def test_bridge_ctrl_c_stops_endpoint_before_ros_shutdown():
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        env=_subprocess_environment(),
     )
     assert process.stdout is not None
 

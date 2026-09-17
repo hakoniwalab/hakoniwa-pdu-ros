@@ -4,6 +4,7 @@ try:
 except ImportError:  # ROS 2 Humble does not expose subscription event callbacks.
     SubscriptionEventCallbacks = None
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 
 from hakoniwa_pdu_ros.config_loader import BindingConfig, BindingRootConfig, load_config
 from hakoniwa_pdu_ros.pdu_endpoint import PduEndpointManager
@@ -105,11 +106,20 @@ class HakoniwaRosBridgeNode(Node):
 def run(config_path: str | None = None) -> None:
     if config_path:
         validate_zenoh_io_for_config(config_path)
-    rclpy.init()
-    config = load_config(config_path) if config_path else None
-    node = HakoniwaRosBridgeNode(config)
+
+    # Own SIGINT handling so endpoint dispatch can be stopped before the ROS
+    # context is shut down. Otherwise Jazzy may invalidate publishers from its
+    # signal handler while the endpoint dispatch thread is still active.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+    node = None
     try:
+        config = load_config(config_path) if config_path else None
+        node = HakoniwaRosBridgeNode(config)
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        if node is not None:
+            node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()

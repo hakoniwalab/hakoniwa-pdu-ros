@@ -3,6 +3,7 @@ try:
     from rclpy.event_handler import SubscriptionEventCallbacks
 except ImportError:  # ROS 2 Humble does not expose subscription event callbacks.
     SubscriptionEventCallbacks = None
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 
@@ -111,14 +112,24 @@ def run(config_path: str | None = None) -> None:
     # bridge owns teardown ordering: Endpoint dispatch -> ROS node -> ROS context.
     rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
     node = None
+    executor = None
     try:
         config = load_config(config_path) if config_path else None
         node = HakoniwaRosBridgeNode(config)
-        rclpy.spin(node)
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        # A finite wait lets Python process KeyboardInterrupt while keeping the
+        # ROS context alive until endpoint dispatch has been stopped.
+        while rclpy.ok():
+            executor.spin_once(timeout_sec=0.1)
     except KeyboardInterrupt:
         pass
     finally:
+        if executor is not None and node is not None:
+            executor.remove_node(node)
         if node is not None:
             node.destroy_node()
+        if executor is not None:
+            executor.shutdown()
         if rclpy.ok():
             rclpy.shutdown()

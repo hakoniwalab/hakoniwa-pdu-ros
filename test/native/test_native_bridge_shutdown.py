@@ -43,21 +43,22 @@ def test_bridge_ctrl_c_stops_endpoint_before_ros_shutdown():
                 print("STOP_BEFORE_ROS_SHUTDOWN", flush=True)
 
 
-        def spin_after_ready(node):
-            executor = rclpy.get_global_executor()
-            try:
-                executor.add_node(node)
-                print("READY", flush=True)
-                while executor.context.ok():
-                    executor.spin_once()
-            finally:
-                executor.remove_node(node)
+        ready = False
+
+
+        class ReadyExecutor(bridge_node.SingleThreadedExecutor):
+            def spin_once(self, timeout_sec=None):
+                global ready
+                if not ready:
+                    print("READY", flush=True)
+                    ready = True
+                return super().spin_once(timeout_sec=timeout_sec)
 
 
         bridge_node.validate_zenoh_io_for_config = lambda _path: None
         bridge_node.load_config = lambda _path: Config()
         bridge_node.PduEndpointManager = FakeEndpointManager
-        bridge_node.rclpy.spin = spin_after_ready
+        bridge_node.SingleThreadedExecutor = ReadyExecutor
 
         bridge_node.run("unused-binding.json")
         print(f"FINAL_RCLPY_OK={rclpy.ok()}", flush=True)

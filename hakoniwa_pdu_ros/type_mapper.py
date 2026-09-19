@@ -82,6 +82,23 @@ def _copy_matching_fields(src: object, dst: object) -> None:
     for name in field_names:
         src_value = getattr(src, name)
         dst_value = getattr(dst, name, None)
+        # A ROS byte[] (sequence<octet>) only serialises correctly when its
+        # elements are bytes-like; a list of ints is accepted, reads back
+        # identical, and then serialises as all-0xff. Normalise on whichever
+        # side declares the field as octet, before anything else looks at it.
+        if _is_octet_sequence_field(dst, name):
+            setattr(dst, name, _as_octet_bytes(src_value, name))
+            continue
+        if _is_octet_sequence_field(src, name) and _field_type_name(
+            dst, name
+        ) is None:
+            # Only when the destination does not declare the field itself. A
+            # destination declaring, say, sequence<uint16> has its own reading
+            # of the same bytes and must keep reaching _decode_binary_sequence
+            # below; overriding it here would quietly change what a generic
+            # field copy means.
+            setattr(dst, name, _as_octet_ints(src_value, name))
+            continue
         if isinstance(src_value, (bytes, bytearray)):
             decoded = _decode_binary_sequence(dst, name, src_value)
             if decoded is not None:
@@ -103,6 +120,72 @@ def _copy_matching_fields(src: object, dst: object) -> None:
                 _copy_matching_fields(src_value, dst_value)
 
 
+def _is_octet_sequence_field(obj: object, field_name: str) -> bool:
+    """True when ``obj`` declares ``field_name`` as a ROS byte[] field.
+
+    ROS `byte[]` is `sequence<octet>` in IDL. rclpy accepts a list of ints for
+    such a field and reads it back unchanged, but serialises every element as
+    0xff; only bytes-like elements survive. Measured on Jazzy with rclpy
+    7.1.11 / rosidl-generator-py 0.22.2, with and without DDS.
+    """
+    field_type = _field_type_name(obj, field_name)
+    if field_type is None:
+        return False
+    return _primitive_sequence_type(field_type) == "octet"
+
+
+def _octet_elements(value, field_name: str):
+    """Yield the integer value of each element of a byte-sequence field.
+
+    Accepts exactly the shapes a byte[] field can legitimately arrive in --
+    a bytes-like object, or a sequence whose elements are ints or one-byte
+    bytes objects -- and rejects everything else rather than coercing it.
+
+    The rejections are the point. int() would turn "12" into two octets and
+    1.9 into 1, and extending from a multi-byte element would merge two
+    elements into one while an empty element vanished. Each of those turns
+    malformed input into a plausible-looking payload of the wrong length,
+    which is the same class of failure this normalisation exists to prevent.
+    """
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        yield from bytes(value)
+        return
+    if isinstance(value, str):
+        raise TypeError(f"byte[] field '{field_name}' cannot be filled from a str")
+    for index, element in enumerate(value):
+        if isinstance(element, (bytes, bytearray)):
+            if len(element) != 1:
+                raise ValueError(
+                    f"byte[] field '{field_name}' element {index} is "
+                    f"{len(element)} bytes; each element must be exactly one"
+                )
+            yield element[0]
+            continue
+        if isinstance(element, bool) or not isinstance(element, int):
+            raise TypeError(
+                f"byte[] field '{field_name}' element {index} has type "
+                f"{type(element).__name__}; expected int or a one-byte bytes"
+            )
+        if not 0 <= element <= 255:
+            # New validation, replacing pass-through: an element outside the
+            # octet range cannot be represented, and rclpy renders it as 0xff.
+            raise ValueError(
+                f"byte[] field '{field_name}' element {index} out of range: "
+                f"{element}"
+            )
+        yield element
+
+
+def _as_octet_bytes(value, field_name: str) -> bytes:
+    """Normalise an accepted byte-sequence shape to ``bytes``."""
+    return bytes(bytearray(_octet_elements(value, field_name)))
+
+
+def _as_octet_ints(value, field_name: str) -> list:
+    """Normalise an accepted byte-sequence shape to a list of ints."""
+    return list(_octet_elements(value, field_name))
+
+
 def _copy_list(src_list, dst_parent: object, field_name: str, dst_list: object) -> list:
     if not src_list:
         return []
@@ -116,7 +199,14 @@ def _copy_list(src_list, dst_parent: object, field_name: str, dst_list: object) 
         if _is_scalar(src_item):
             copied.append(src_item)
             continue
-        if index < len(dst_items):
+        if index < len(dst_items) and (
+            item_type is None or isinstance(dst_items[index], item_type)
+        ):
+            # Reuse an existing element only when it is of the declared type.
+            # A destination left holding elements of the source type from an
+            # earlier copy would otherwise keep them, and every
+            # destination-type-aware rule inside them -- byte[] handling
+            # included -- would go on being skipped.
             dst_item = dst_items[index]
         elif item_type is not None:
             dst_item = item_type()
@@ -130,13 +220,48 @@ def _copy_list(src_list, dst_parent: object, field_name: str, dst_list: object) 
 def _list_item_type(dst_parent: object, field_name: str):
     annotations = getattr(dst_parent.__class__, "__annotations__", {})
     field_type = annotations.get(field_name)
-    if field_type is None:
+    if field_type is not None:
+        origin = get_origin(field_type)
+        if origin in {list, tuple}:
+            args = get_args(field_type)
+            if args:
+                return args[0]
         return None
-    origin = get_origin(field_type)
-    if origin not in {list, tuple}:
+    # ROS message classes leave __annotations__ empty and declare their fields
+    # through get_fields_and_field_types() instead, so the path above always
+    # returns None for them. Without this second lookup a nested message list
+    # is filled with objects of the SOURCE type: the ROS message ends up
+    # holding PDU objects, rosidl duck-types its way through serialisation,
+    # and any destination-type-aware handling never gets a chance to run --
+    # byte[] being the case that bites, since a PDU object hands it a list of
+    # ints. Measured 2026-09-11 with tobas_mission_msgs/Mission, whose
+    # __annotations__ is {} while get_fields_and_field_types() reports
+    # {'items': 'sequence<tobas_mission_msgs/MissionItem>'}.
+    declared = _field_type_name(dst_parent, field_name)
+    if declared is None:
         return None
-    args = get_args(field_type)
-    return args[0] if args else None
+    inner = _primitive_sequence_type(declared)
+    if inner is None or "/" not in inner:
+        return None
+    package_name, _, message_name = inner.partition("/")
+    # A declared message element type that cannot be resolved is reported
+    # rather than ignored. Returning None here would put the caller back on
+    # the fallback that constructs elements of the SOURCE type, which is the
+    # defect this lookup exists to close -- and it would do so silently.
+    try:
+        module = importlib.import_module(f"{package_name}.msg")
+    except ImportError as error:
+        raise TypeError(
+            f"field '{field_name}' declares element type '{inner}', whose "
+            f"package could not be imported: {error}"
+        ) from error
+    item_type = getattr(module, message_name, None)
+    if item_type is None:
+        raise TypeError(
+            f"field '{field_name}' declares element type '{inner}', which is "
+            f"not present in {package_name}.msg"
+        )
+    return item_type
 
 
 def _decode_binary_sequence(dst_parent: object, field_name: str, raw: bytes | bytearray):
@@ -181,8 +306,17 @@ def _is_declared_sequence_field(src: object, dst: object, field_name: str) -> bo
 
 
 def _primitive_sequence_type(field_type: str) -> str | None:
+    """Element type of a sequence declaration, bound stripped if present.
+
+    ROS spells a bounded sequence `sequence<T, N>` and a fixed array `T[N]`.
+    Returning "T, N" for the bounded form makes every caller that compares the
+    result against a type name silently fail to recognise it -- a bounded
+    byte[] would not be detected as octet, and a bounded message array would
+    be looked up under the attribute name "Type, 5".
+    """
     if field_type.startswith("sequence<") and field_type.endswith(">"):
-        return field_type[len("sequence<") : -1]
+        inner = field_type[len("sequence<") : -1]
+        return inner.split(",", 1)[0].strip()
     if field_type.endswith("]"):
         return field_type.split("[", 1)[0]
     return None

@@ -248,7 +248,8 @@ def main() -> None:
     parser.add_argument("--output-dir", help="Generated RPC config output directory")
     parser.add_argument("--offset-dir", help="Hakoniwa offset root")
     parser.add_argument("--rpc-library", help="PDU-RPC shared library path")
-    args = parser.parse_args()
+    from rclpy.utilities import remove_ros_args
+    args = parser.parse_args(remove_ros_args()[1:])
     try:
         run(
             args.config,

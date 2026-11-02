@@ -10,7 +10,8 @@ def main() -> None:
     configure_import_paths()
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
-    args = parser.parse_args()
+    from rclpy.utilities import remove_ros_args
+    args = parser.parse_args(remove_ros_args()[1:])
     try:
         run(args.config)
     except ZenohIoValidationError as err:

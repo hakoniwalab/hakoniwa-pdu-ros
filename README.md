@@ -247,6 +247,10 @@ service-server \
   --rpc-library /path/to/libhakoniwa_pdu_rpc.so
 ```
 
+The Topic Bridge and Service Server accept ROS launch remapping arguments
+(`--ros-args -r ...`) alongside their own CLI options. ROS processes the
+remapping; it is not interpreted as a bridge option.
+
 Use the same Binding for the ROS Service Client / Hakoniwa Typed RPC Server
 direction:
 

@@ -13,9 +13,10 @@ class EndpointRef:
 
 @dataclass(frozen=True)
 class ServiceRuntimeConfig:
-    transport_config: Path
+    transport_config: Path | None
     delta_time_usec: int = 1000
     time_source_type: str = "real"
+    rpc_service_config: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -54,7 +55,10 @@ def load_service_binding(path: str | Path) -> ServiceBindingConfig:
         raise ValueError("Service Binding version must be 1")
 
     service = _parse_service(raw.get("service"), source_path.parent)
-    transport = _load_transport(service.transport_config)
+    transport = (
+        _load_transport(service.transport_config)
+        if service.transport_config is not None else None
+    )
     raw_bindings = raw.get("bindings")
     if not isinstance(raw_bindings, list) or not raw_bindings:
         raise ValueError("Service Binding bindings must be a non-empty array")
@@ -62,7 +66,8 @@ def load_service_binding(path: str | Path) -> ServiceBindingConfig:
         _parse_binding(entry, index) for index, entry in enumerate(raw_bindings)
     )
     _validate_unique_bindings(bindings)
-    _validate_endpoint_refs(bindings, transport)
+    if transport is not None:
+        _validate_endpoint_refs(bindings, transport)
     return ServiceBindingConfig(source_path, 1, service, bindings)
 
 
@@ -79,24 +84,26 @@ def _parse_service(raw: object, base_dir: Path) -> ServiceRuntimeConfig:
     _require_object(raw, "service")
     _reject_unknown(
         raw,
-        {"transport_config", "delta_time_usec", "time_source_type"},
+        {"transport_config", "rpc_service_config", "delta_time_usec", "time_source_type"},
         "service",
     )
-    transport = Path(
-        _require_string(raw.get("transport_config"), "service.transport_config")
-    ).expanduser()
-    if not transport.is_absolute():
-        transport = (base_dir / transport).resolve()
-    if not transport.is_file():
-        raise ValueError(f"Service transport config does not exist: {transport}")
+    if ("transport_config" in raw) == ("rpc_service_config" in raw):
+        raise ValueError("Specify exactly one of service.transport_config and service.rpc_service_config")
+    key = "transport_config" if "transport_config" in raw else "rpc_service_config"
+    path = Path(_require_string(raw[key], f"service.{key}")).expanduser()
+    path = (base_dir / path).resolve()
+    if not path.is_file():
+        label = "transport config" if key == "transport_config" else "RPC service config"
+        raise ValueError(f"Service {label} does not exist: {path}")
     return ServiceRuntimeConfig(
-        transport_config=transport,
+        transport_config=path if key == "transport_config" else None,
         delta_time_usec=_positive_int(
             raw.get("delta_time_usec", 1000), "service.delta_time_usec"
         ),
         time_source_type=_require_string(
             raw.get("time_source_type", "real"), "service.time_source_type"
         ),
+        rpc_service_config=path if key == "rpc_service_config" else None,
     )
 
 

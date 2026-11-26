@@ -28,12 +28,20 @@
     "service": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["transport_config"],
+      "oneOf": [
+        { "required": ["transport_config"] },
+        { "required": ["rpc_service_config"] }
+      ],
       "properties": {
         "transport_config": {
           "type": "string",
           "minLength": 1,
           "description": "Hakoniwa Service transport object path, resolved relative to this binding file."
+        },
+        "rpc_service_config": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Shared core-pro and PDU-RPC service definition used by the SHM service-server route. The path is relative to this binding file."
         },
         "delta_time_usec": {
           "type": "integer",

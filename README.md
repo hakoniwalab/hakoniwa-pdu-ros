@@ -247,6 +247,12 @@ service-server \
   --rpc-library /path/to/libhakoniwa_pdu_rpc.so
 ```
 
+For a core-pro SHM service, set `service.rpc_service_config` to the shared
+PDU-RPC service definition and omit `service.transport_config`. The matching
+`client_endpoint` in the shared definition must select `"protocol": "shm"`.
+The `service-server` entry point uses this definition directly with a
+SHM-enabled PDU-RPC library.
+
 The Topic Bridge and Service Server accept ROS launch remapping arguments
 (`--ros-args -r ...`) alongside their own CLI options. ROS processes the
 remapping; it is not interpreted as a bridge option.

@@ -26,6 +26,7 @@ from hakoniwa_pdu_ros.service_call_lifecycle import BridgeCallLifecycle
 from hakoniwa_pdu_ros.service_config_generator import (
     ResolvedService,
     generate_service_configs,
+    resolve_shm_services,
 )
 from hakoniwa_pdu_ros.type_mapper import copy_matching_fields, import_ros_service_class
 
@@ -37,14 +38,16 @@ class HakoniwaRosServiceServerNode(Node):
         self,
         config: ServiceBindingConfig,
         rpc_service_config: str | Path,
-        rpc_endpoint_config: str | Path,
+        rpc_endpoint_config: str | Path | None,
         rpc_library: str | Path,
         resolved_services: tuple[ResolvedService, ...],
     ) -> None:
         super().__init__("hakoniwa_pdu_ros_service_server")
         self._config = config
         self._rpc_service_config = Path(rpc_service_config).resolve()
-        self._rpc_endpoint_config = Path(rpc_endpoint_config).resolve()
+        self._rpc_endpoint_config = (
+            Path(rpc_endpoint_config).resolve() if rpc_endpoint_config is not None else None
+        )
         self._rpc_library = Path(rpc_library).resolve()
         self._callback_group = ReentrantCallbackGroup()
         self._pools: dict[str, RpcClientPool] = {}
@@ -174,6 +177,12 @@ class HakoniwaRosServiceServerNode(Node):
                     f"service call failed: ros={binding.ros_name} "
                     f"rpc={binding.hakoniwa_service} error={error}"
                 )
+                if self._rpc_endpoint_config is None and hasattr(response, "result_code"):
+                    from hakoniwa_pdu_rpc import TypedRpcServiceError
+
+                    if isinstance(error, TypedRpcServiceError) and error.result_code:
+                        response.result_code = error.result_code
+                        return response
                 raise ServiceCallRejected(str(error)) from error
             finally:
                 pool.release(lease)
@@ -208,12 +217,18 @@ def run(
     if not library:
         raise ValueError("Specify --rpc-library or set HAKO_PDU_RPC_LIBRARY")
 
-    generated = generate_service_configs(
-        config_path,
-        output_dir=output_dir,
-        offset_dir=offset_dir,
-    )
     config = load_service_binding(config_path)
+    service_config = config.service.rpc_service_config
+    if service_config is None:
+        generated = generate_service_configs(
+            config_path, output_dir=output_dir, offset_dir=offset_dir
+        )
+        service_config = generated.client_config
+        endpoint_config = generated.endpoint_config
+        resolved_services = generated.services
+    else:
+        endpoint_config = None
+        resolved_services = resolve_shm_services(config, service_config)
 
     rclpy.init()
     node: HakoniwaRosServiceServerNode | None = None
@@ -221,10 +236,10 @@ def run(
     try:
         node = HakoniwaRosServiceServerNode(
             config,
-            generated.client_config,
-            generated.endpoint_config,
+            service_config,
+            endpoint_config,
             library,
-            generated.services,
+            resolved_services,
         )
         executor = MultiThreadedExecutor()
         executor.add_node(node)
@@ -236,7 +251,7 @@ def run(
             node.destroy_node()
         if executor is not None:
             executor.shutdown(timeout_sec=5.0)
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 def main() -> None:

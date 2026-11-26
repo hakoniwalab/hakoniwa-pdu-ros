@@ -47,6 +47,8 @@ def generate_service_configs(
     rpc_generator: Callable[[Path, Path], list[Path]] | None = None,
 ) -> GeneratedServiceConfigs:
     config = load_service_binding(config_path)
+    if config.service.transport_config is None:
+        raise ValueError("Shared RPC service definitions are supported by service-server")
     offsets = _resolve_offset_dir(offset_dir)
     resolve_ros = ros_interface_resolver or resolve_installed_ros_service
     resolve_pdu = pdu_type_resolver or resolve_installed_pdu_service_type
@@ -91,6 +93,37 @@ def generate_service_configs(
         generated_files=generated,
         services=tuple(resolved),
     )
+
+
+def resolve_shm_services(
+    config: ServiceBindingConfig, service_config: Path
+) -> tuple[ResolvedService, ...]:
+    raw = json.loads(service_config.read_text(encoding="utf-8"))
+    definitions = {entry["name"]: entry for entry in raw["services"]}
+    resolved = []
+    for binding in config.bindings:
+        entry = definitions.get(binding.hakoniwa_service)
+        if entry is None:
+            raise ValueError(f"Missing RPC service: {binding.hakoniwa_service}")
+        pdu_type = resolve_installed_pdu_service_type(binding.ros_type, entry["type"])
+        if binding.pdu_service_type and binding.pdu_service_type != pdu_type:
+            raise ValueError(f"PDU service type mismatch for {binding.hakoniwa_service}")
+        resolve_installed_ros_service(binding.ros_type)
+        key = service_key(binding.hakoniwa_service)
+        clients = {client["name"]: client["client_endpoint"] for client in entry.get("clients", [])}
+        for index in range(binding.max_clients):
+            name = f"hakoniwa_pdu_ros_{key}_{index}"
+            endpoint = clients.get(name, {})
+            if (
+                endpoint.get("nodeId") != binding.client_endpoint.node_id
+                or endpoint.get("protocol") != "shm"
+            ):
+                raise ValueError(f"Missing SHM RPC endpoint for {binding.hakoniwa_service}: {name}")
+        sizes = entry["pduSize"]
+        resolved.append(ResolvedService(
+            binding, pdu_type, sizes["server"]["baseSize"], sizes["client"]["baseSize"]
+        ))
+    return tuple(resolved)
 
 
 def resolve_installed_ros_service(ros_type: str) -> None:
